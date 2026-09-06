@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Memory, StageId } from '@/lib/types';
 import { fetchAllMemories, createMemory, updateMemory, deleteMemory, getActiveUser, setActiveUser } from '@/lib/memoryStore';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
 import { Navbar } from '@/components/ui/Navbar';
 import { IosTabBar } from '@/components/ui/IosTabBar';
 import { InteractiveMap, InteractiveMapRef } from '@/components/map/InteractiveMap';
@@ -13,7 +14,7 @@ import { CreateMemoryModal } from '@/components/memories/CreateMemoryModal';
 import { EditMemoryModal } from '@/components/memories/EditMemoryModal';
 import { StoryTour } from '@/components/story/StoryTour';
 import { RoadTripLoader } from '@/components/ui/RoadTripLoader';
-import { Plus, MapPin, ChevronUp, Palmtree, PanelRightClose, PanelRightOpen, Maximize2, ListFilter, Layers } from 'lucide-react';
+import { Plus, MapPin, ChevronUp, Palmtree, PanelRightClose, PanelRightOpen, Maximize2, ListFilter, Layers, RefreshCw } from 'lucide-react';
 
 export default function Home() {
   const [showRoadTripLoader, setShowRoadTripLoader] = useState(true);
@@ -35,15 +36,62 @@ export default function Home() {
   const mapRef = useRef<InteractiveMapRef>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function loadData() {
       const data = await fetchAllMemories();
+      if (!isMounted) return;
       setMemories(data);
       if (data.length > 0) {
-        setSelectedMemory(data[0]);
+        setSelectedMemory((prev) => prev || data[0]);
       }
       setActiveUserState(getActiveUser());
     }
     loadData();
+
+    // 1. Auto-sync polling every 10 seconds so changes appear automatically on all devices
+    const pollInterval = setInterval(async () => {
+      try {
+        const fresh = await fetchAllMemories();
+        if (!isMounted) return;
+        setMemories((prev) => {
+          if (JSON.stringify(prev) !== JSON.stringify(fresh)) {
+            return fresh;
+          }
+          return prev;
+        });
+      } catch (err) {
+        console.warn('Auto-sync poll error:', err);
+      }
+    }, 10000);
+
+    // 2. Realtime WebSocket subscription if Supabase is connected
+    let channel: any = null;
+    if (isSupabaseConfigured && supabase) {
+      try {
+        channel = supabase
+          .channel('realtime_memories_sync')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'memories' },
+            async () => {
+              const fresh = await fetchAllMemories();
+              if (isMounted) setMemories(fresh);
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn('Realtime subscription error:', err);
+      }
+    }
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+      if (channel && supabase) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, []);
 
   const handleUserChange = (user: 'Ariel' | 'Jazmin') => {
@@ -145,8 +193,8 @@ export default function Home() {
               }}
             />
 
-            {/* Bottom Toggle Button to Expand or Show List (Visible on both mobile & desktop) */}
-            <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2">
+            {/* Desktop Prominent Floating Button */}
+            <div className="hidden md:flex absolute bottom-6 left-6 z-20">
               <button
                 onClick={() => {
                   const next = !isMapExpanded;
@@ -154,25 +202,57 @@ export default function Home() {
                   setTimeout(() => mapRef.current?.resize(), 250);
                 }}
                 title={isMapExpanded ? "Ver filtros y lista de recuerdos" : "Expandir mapa a pantalla completa"}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/95 text-slate-800 hover:text-slate-950 border border-slate-200 shadow-md backdrop-blur-md text-xs font-semibold active:scale-95 transition"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-slate-900/95 hover:bg-slate-900 text-white border-2 border-emerald-500/60 shadow-2xl backdrop-blur-md text-xs font-bold transition transform hover:scale-105 active:scale-95 cursor-pointer"
               >
                 {isMapExpanded ? (
                   <>
-                    <ListFilter className="w-4 h-4 text-emerald-700" />
-                    <span>Ver lista y filtros ({filteredMemories.length})</span>
+                    <ListFilter className="w-4 h-4 text-emerald-400" />
+                    <span>Mostrar lista y filtros ({filteredMemories.length})</span>
                   </>
                 ) : (
                   <>
-                    <Maximize2 className="w-4 h-4 text-emerald-700" />
-                    <span>Expandir mapa</span>
+                    <Maximize2 className="w-4 h-4 text-emerald-400" />
+                    <span>Expandir mapa completo</span>
                   </>
                 )}
               </button>
             </div>
 
+            {/* Mobile Prominent Floating Button (when map is expanded, centered above dock) */}
+            {isMapExpanded && (
+              <div className="md:hidden absolute bottom-22 left-1/2 -translate-x-1/2 z-30 pointer-events-auto">
+                <button
+                  onClick={() => {
+                    setIsMapExpanded(false);
+                    setTimeout(() => mapRef.current?.resize(), 250);
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-slate-950 text-white font-extrabold text-xs shadow-2xl border-2 border-emerald-400 backdrop-blur-md active:scale-95 transition"
+                >
+                  <ListFilter className="w-4 h-4 text-emerald-400 animate-pulse" />
+                  <span>Ver recuerdos y filtros ({filteredMemories.length})</span>
+                </button>
+              </div>
+            )}
+
+            {/* Mobile Floating Button on map corner when panel is open */}
+            {!isMapExpanded && (
+              <div className="md:hidden absolute bottom-3 right-3 z-20">
+                <button
+                  onClick={() => {
+                    setIsMapExpanded(true);
+                    setTimeout(() => mapRef.current?.resize(), 250);
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900/90 text-white border border-emerald-500/50 shadow-lg text-xs font-bold active:scale-95 transition"
+                >
+                  <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Expandir mapa</span>
+                </button>
+              </div>
+            )}
+
             {/* Mobile Bottom Selected Memory Card (positioned above floating dock when map is expanded) */}
             {selectedMemory && isMapExpanded && (
-              <div className="md:hidden absolute bottom-16 inset-x-3 z-20">
+              <div className="md:hidden absolute bottom-34 inset-x-3 z-20">
                 <div
                   onClick={() => setDetailMemory(selectedMemory)}
                   className="bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl p-3 shadow-lg flex items-center gap-3 cursor-pointer"
@@ -221,9 +301,9 @@ export default function Home() {
                       setIsMapExpanded(true);
                       setTimeout(() => mapRef.current?.resize(), 250);
                     }}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 text-[11px] font-semibold active:scale-95 transition shadow-2xs"
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold active:scale-95 transition shadow-xs"
                   >
-                    <Maximize2 className="w-3 h-3 text-emerald-700" />
+                    <Maximize2 className="w-3.5 h-3.5" />
                     <span>Expandir mapa</span>
                   </button>
                 </div>
@@ -276,9 +356,9 @@ export default function Home() {
                       setTimeout(() => mapRef.current?.resize(), 250);
                     }}
                     title="Expandir mapa completo"
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold transition"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
                   >
-                    <Maximize2 className="w-3.5 h-3.5 text-emerald-700" />
+                    <Maximize2 className="w-3.5 h-3.5" />
                     <span>Expandir mapa</span>
                   </button>
                 </div>
