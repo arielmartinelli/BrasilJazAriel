@@ -12,9 +12,11 @@ import { MemoryDetailModal } from '@/components/memories/MemoryDetailModal';
 import { CreateMemoryModal } from '@/components/memories/CreateMemoryModal';
 import { EditMemoryModal } from '@/components/memories/EditMemoryModal';
 import { StoryTour } from '@/components/story/StoryTour';
+import { RoadTripLoader } from '@/components/ui/RoadTripLoader';
 import { Plus, MapPin, ChevronUp, Palmtree, PanelRightClose, PanelRightOpen } from 'lucide-react';
 
 export default function Home() {
+  const [showRoadTripLoader, setShowRoadTripLoader] = useState(true);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [currentView, setCurrentView] = useState<'map' | 'story' | 'feed'>('map');
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
@@ -360,6 +362,14 @@ export default function Home() {
         onSave={handleSaveNewMemory}
         activeUser={activeUser}
       />
+
+      {/* Dynamic Road Trip Animated Loading Screen (CBA ➔ Brasil ~3s) */}
+      {showRoadTripLoader && (
+        <RoadTripLoader
+          durationMs={3000}
+          onComplete={() => setShowRoadTripLoader(false)}
+        />
+      )}
     </main>
   );
 }
