@@ -1,3 +1,10 @@
+/** Respuesta de la API de busqueda de OpenStreetMap (solo lo que usamos). */
+interface NominatimPlace {
+  display_name: string;
+  lat: string;
+  lon: string;
+}
+
 export function parseGoogleMapsOrCoords(input: string): { coords: [number, number]; name?: string } | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
@@ -93,11 +100,14 @@ export async function searchPlaces(query: string): Promise<Array<{ name: string;
     clearTimeout(timeoutId);
 
     if (!res.ok) return [];
-    const data = await res.json();
-    return data.map((item: any) => ({
-      name: item.display_name.split(',').slice(0, 3).join(','),
-      coords: [parseFloat(item.lon), parseFloat(item.lat)] as [number, number],
-    }));
+    const data: NominatimPlace[] = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data
+      .filter((item) => item?.display_name && item.lat && item.lon)
+      .map((item) => ({
+        name: item.display_name.split(',').slice(0, 3).join(','),
+        coords: [parseFloat(item.lon), parseFloat(item.lat)] as [number, number],
+      }));
   } catch {
     return [];
   }

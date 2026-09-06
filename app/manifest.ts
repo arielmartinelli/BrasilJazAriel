@@ -9,7 +9,9 @@ export default function manifest(): MetadataRoute.Manifest {
     display: 'standalone',
     background_color: '#ffffff',
     theme_color: '#009C3B',
-    orientation: 'portrait',
+    // Sin bloqueo de orientación: las fotos apaisadas y el mapa se ven mejor
+    // en horizontal, y forzar vertical es una barrera de accesibilidad.
+    orientation: 'any',
     icons: [
       {
         src: '/icon.svg',

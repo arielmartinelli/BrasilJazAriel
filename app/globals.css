@@ -1,22 +1,104 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
+@import "leaflet.markercluster/dist/MarkerCluster.css";
+
+@theme {
+  /* Paleta del proyecto, un poco mas calida que el slate/emerald por defecto.
+     Se mantiene la identidad actual: solo se ajustan contraste y matices. */
+  --color-brand-50:  #ecfdf5;
+  --color-brand-100: #d1fae5;
+  --color-brand-200: #a7f3d0;
+  --color-brand-500: #10b981;
+  --color-brand-600: #059669;
+  --color-brand-700: #047857;
+  --color-brand-800: #065f46;
+  --color-brand-900: #064e3b;
+
+  --color-sand-50:  #fdfcf9;
+  --color-sand-100: #faf7f0;
+  --color-sand-200: #f1ece0;
+}
 
 @layer base {
   :root {
     --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    /* Altura real del viewport en movil, sin la barra del navegador. */
+    --app-header-h: 4rem;
+    --app-dock-h: 4.75rem;
   }
 
-  html, body {
+  html,
+  body {
     height: 100%;
     margin: 0;
     padding: 0;
-    scroll-behavior: smooth;
     -webkit-tap-highlight-color: transparent;
     font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Scroll suave solo si la persona no pidio menos movimiento. */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  /* Accesibilidad: anillo de foco visible y consistente en toda la app.
+     Antes varios controles usaban focus:outline-none sin reemplazo, lo que
+     dejaba la navegacion por teclado sin ninguna pista visual. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+  }
+
+  /* Respeta la preferencia del sistema de reducir animaciones. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
-/* Fullscreen Leaflet map fixes */
+@layer components {
+  /* Texto solo para lectores de pantalla. */
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* Placeholder de carga con brillo. */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      #eef2f6 25%,
+      #f7fafc 37%,
+      #eef2f6 63%
+    );
+    background-size: 400% 100%;
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* ============================================================ LEAFLET ===== */
 .leaflet-container {
   width: 100% !important;
   height: 100% !important;
@@ -25,17 +107,19 @@
   font-family: var(--font-sans) !important;
 }
 
-.leaflet-control-zoom {
-  border: 1px solid rgba(0, 0, 0, 0.1) !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08) !important;
-  border-radius: 12px !important;
-  overflow: hidden;
+/* Modo noche: filtro CSS sobre los tiles claros. Evita depender de un
+   proveedor extra y funciona con cualquier capa. */
+.map-night .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(185deg) brightness(0.92) contrast(0.92) saturate(0.75);
 }
-
-.leaflet-control-zoom a {
-  background-color: #ffffff !important;
-  color: #0f172a !important;
-  border-bottom: 1px solid #e2e8f0 !important;
+.map-night {
+  background-color: #10151c !important;
+}
+/* Los pines no se invierten: llevan fotos reales. */
+.map-night .leaflet-marker-pane,
+.map-night .leaflet-popup-pane,
+.map-night .leaflet-overlay-pane {
+  filter: none;
 }
 
 .leaflet-popup-content-wrapper {
@@ -49,26 +133,44 @@
   margin: 0 !important;
 }
 
-/* Pulse animation for map pins */
+/* Pulso del pin seleccionado. */
 @keyframes marker-pulse-ring {
-  0% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(0, 156, 59, 0.45);
-  }
-  70% {
-    transform: scale(1.08);
-    box-shadow: 0 0 0 12px rgba(0, 156, 59, 0);
-  }
-  100% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(0, 156, 59, 0);
-  }
+  0%   { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.45); }
+  70%  { transform: scale(1.08); box-shadow: 0 0 0 12px rgba(5, 150, 105, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0); }
 }
 
 .pin-pulse-active {
   animation: marker-pulse-ring 2s infinite;
 }
 
+/* Ruta del viaje en auto. */
+@keyframes route-dash {
+  to { stroke-dashoffset: -24; }
+}
+.trip-route-line {
+  animation: route-dash 1.4s linear infinite;
+}
+
+/* Grupos de pines cuando hay muchos recuerdos juntos. */
+.memory-cluster {
+  background: rgba(255, 255, 255, 0.96);
+  border: 2px solid var(--color-brand-600);
+  border-radius: 9999px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  color: var(--color-brand-800);
+  font-size: 13px;
+}
+.memory-cluster-lg {
+  border-color: #d97706;
+  color: #92400e;
+}
+
+/* ======================================================== UTILIDADES ====== */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -77,11 +179,16 @@
   scrollbar-width: none;
 }
 
-/* iOS Bottom Tab Bar */
+/* Barra inferior tipo iOS. */
 .ios-tab-bar-container {
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: 1px solid #e2e8f0;
   padding-bottom: max(14px, env(safe-area-inset-bottom));
+}
+
+/* SweetAlert por encima de los modales de la app. */
+.swal2-container {
+  z-index: 9999 !important;
 }

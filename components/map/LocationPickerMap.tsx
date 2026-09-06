@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { MapPin, Navigation, Check, X, Search, Link2, ExternalLink, Loader2 } from 'lucide-react';
 import type * as LeafletType from 'leaflet';
 import { parseGoogleMapsOrCoords, reverseGeocode, searchPlaces, getAccurateCurrentPosition } from '@/lib/geoUtils';
+import { showErrorAlert } from '@/lib/alerts';
+import { useModalA11y } from '@/hooks/useModalA11y';
 
 interface LocationPickerMapProps {
   initialCoordinates: [number, number];
@@ -40,6 +42,9 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [googleMapsInput, setGoogleMapsInput] = useState('');
   const [activeTab, setActiveTab] = useState<'quick' | 'search' | 'gmaps'>('quick');
+
+  // Escape cierra, el fondo no scrollea y el foco queda dentro del selector.
+  const dialogRef = useModalA11y(true, onCancel);
 
   useEffect(() => {
     let isMounted = true;
@@ -113,6 +118,9 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
         mapRef.current = null;
       }
     };
+    // Se inicializa una sola vez con las coordenadas de entrada; después el
+    // mapa se mueve con moveToCoords, no re-creándolo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const moveToCoords = (newCoords: [number, number], name?: string) => {
@@ -132,7 +140,10 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
       const name = await reverseGeocode(currentCoords[1], currentCoords[0]);
       setLocationName(name || 'Mi ubicación actual');
     } catch {
-      alert('No pudimos acceder a tu GPS. Por favor verifica los permisos de ubicación o busca el lugar directamente.');
+      showErrorAlert(
+        'No pudimos acceder a tu GPS',
+        'Verificá los permisos de ubicación de este sitio, o buscá el lugar por nombre.'
+      );
     } finally {
       setIsGeolocating(false);
     }
@@ -160,15 +171,27 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
       });
       setGoogleMapsInput('');
     } else {
-      alert('No se pudieron leer coordenadas de ese enlace. Puedes buscar el nombre del lugar o pegar coordenadas como: -27.5969, -48.5496');
+      showErrorAlert(
+        'No pudimos leer ese enlace',
+        'Probá buscar el lugar por nombre, o pegá coordenadas así: -27.5969, -48.5496'
+      );
     }
   };
 
   const googleMapsWebUrl = `https://www.google.com/maps/search/?api=1&query=${coords[1]},${coords[0]}`;
 
   return (
-    <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 select-none">
-      <div className="relative w-full max-w-xl bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-2xl flex flex-col h-[85vh] max-h-[660px]">
+    <div
+      className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Seleccionar ubicación del recuerdo"
+    >
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="relative w-full max-w-xl bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-2xl flex flex-col h-[85dvh] max-h-[660px] outline-none"
+      >
         {/* Header */}
         <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
           <div>
@@ -176,7 +199,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
               <MapPin className="w-4 h-4 text-emerald-600" />
               <span>Seleccionar ubicación del recuerdo</span>
             </h3>
-            <p className="text-[11px] sm:text-xs text-slate-500">
+            <p className="text-xs text-slate-500">
               Usa GPS, busca por nombre, pega un link de Google Maps o toca el mapa
             </p>
           </div>
@@ -323,7 +346,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
               href={googleMapsWebUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-2.5 py-1.5 rounded-lg bg-white/95 hover:bg-white text-slate-700 border border-slate-200 shadow-sm backdrop-blur-md text-[11px] font-semibold flex items-center gap-1 transition"
+              className="px-2.5 py-1.5 rounded-lg bg-white/95 hover:bg-white text-slate-700 border border-slate-200 shadow-sm backdrop-blur-md text-xs font-semibold flex items-center gap-1 transition"
             >
               <span>Ver en Google Maps</span>
               <ExternalLink className="w-3 h-3 text-emerald-700" />

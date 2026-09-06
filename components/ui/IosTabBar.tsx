@@ -21,32 +21,34 @@ export const IosTabBar: React.FC<IosTabBarProps> = ({
   return (
     <div className="md:hidden fixed bottom-4 inset-x-3 z-40 max-w-sm mx-auto pointer-events-none select-none">
       {/* Floating Apple Liquid Capsule Bar */}
-      <nav className="pointer-events-auto bg-[#18181b] border border-white/15 rounded-full shadow-[0_14px_40px_rgba(0,0,0,0.38)] p-1.5 px-2 backdrop-blur-2xl">
+      <nav aria-label="Navegación principal" className="pointer-events-auto bg-[#18181b] border border-white/15 rounded-full shadow-[0_14px_40px_rgba(0,0,0,0.38)] p-1.5 px-2 backdrop-blur-2xl">
         <div className="grid grid-cols-5 items-center w-full">
           {/* Tab 1: Mapa */}
           <button
             onClick={() => onViewChange('map')}
+            aria-current={currentView === 'map' ? 'page' : undefined}
             className={`flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-full transition-all duration-200 ${
               currentView === 'map'
                 ? 'text-emerald-400 font-bold bg-white/10'
-                : 'text-slate-400 hover:text-white'
+                : 'text-slate-300 hover:text-white'
             }`}
           >
             <Map className={`w-4 h-4 ${currentView === 'map' ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
-            <span className="text-[10px] tracking-tight font-medium">Mapa</span>
+            <span className="text-[11px] tracking-tight font-semibold">Mapa</span>
           </button>
 
           {/* Tab 2: Historia */}
           <button
             onClick={() => onViewChange('story')}
+            aria-current={currentView === 'story' ? 'page' : undefined}
             className={`flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-full transition-all duration-200 ${
               currentView === 'story'
                 ? 'text-emerald-400 font-bold bg-white/10'
-                : 'text-slate-400 hover:text-white'
+                : 'text-slate-300 hover:text-white'
             }`}
           >
             <BookOpen className={`w-4 h-4 ${currentView === 'story' ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
-            <span className="text-[10px] tracking-tight font-medium">Historia</span>
+            <span className="text-[11px] tracking-tight font-semibold">Historia</span>
           </button>
 
           {/* Center Button: + Recuerdo (Apple Action Floating Button) */}
@@ -63,19 +65,21 @@ export const IosTabBar: React.FC<IosTabBarProps> = ({
           {/* Tab 4: Muro */}
           <button
             onClick={() => onViewChange('feed')}
+            aria-current={currentView === 'feed' ? 'page' : undefined}
             className={`flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-full transition-all duration-200 ${
               currentView === 'feed'
                 ? 'text-emerald-400 font-bold bg-white/10'
-                : 'text-slate-400 hover:text-white'
+                : 'text-slate-300 hover:text-white'
             }`}
           >
             <LayoutGrid className={`w-4 h-4 ${currentView === 'feed' ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
-            <span className="text-[10px] tracking-tight font-medium">Muro</span>
+            <span className="text-[11px] tracking-tight font-semibold">Muro</span>
           </button>
 
           {/* Tab 5: Autor (celda fija que no desplaza los otros botones) */}
           <button
             onClick={onToggleUser}
+            title="Cambiar quién está publicando"
             className="flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-full text-slate-300 hover:text-white active:scale-95 transition-all duration-150"
           >
             <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${
@@ -83,7 +87,7 @@ export const IosTabBar: React.FC<IosTabBarProps> = ({
             }`}>
               {activeUser[0]}
             </div>
-            <span className="text-[10px] font-medium w-full text-center truncate px-0.5">
+            <span className="text-[11px] font-semibold w-full text-center truncate px-0.5">
               {activeUser}
             </span>
           </button>

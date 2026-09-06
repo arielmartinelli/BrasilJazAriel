@@ -1,24 +1,46 @@
 'use client';
 
-import { Memory, Participant } from './types';
-import { INITIAL_MEMORIES } from './mockData';
-import { supabase, isSupabaseConfigured } from './supabase/client';
+import type { Memory } from './types';
+
+/**
+ * Acceso a los recuerdos desde el navegador.
+ *
+ * Antes este archivo hablaba directo con Supabase usando la anon key, que
+ * viaja dentro del bundle publico. Ahora todo pasa por /api/memories, que
+ * corre en el servidor, valida la sesion y usa la service role key privada.
+ * localStorage queda como cache offline y como modo local sin base de datos.
+ */
 
 const LOCAL_STORAGE_KEY = 'nossa_historia_memories_prod_v1';
 const ACTIVE_USER_KEY = 'nossa_historia_active_user';
 
+export type Source = 'supabase' | 'local';
+
+export interface LoadResult {
+  memories: Memory[];
+  source: Source;
+  /** true cuando el servidor pidio codigo de acceso. */
+  unauthorized: boolean;
+}
+
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+// ------------------------------------------------------------- almacen local
 export function getStoredMemories(): Memory[] {
-  if (typeof window === 'undefined') return INITIAL_MEMORIES;
+  if (typeof window === 'undefined') return [];
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!saved) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(INITIAL_MEMORIES));
-      return INITIAL_MEMORIES;
-    }
-    return JSON.parse(saved);
-  } catch (err) {
-    console.error('Error reading memories from localStorage:', err);
-    return INITIAL_MEMORIES;
+    if (!saved) return [];
+    const parsed: unknown = JSON.parse(saved);
+    return Array.isArray(parsed) ? (parsed as Memory[]) : [];
+  } catch (error) {
+    console.error('No se pudieron leer los recuerdos locales:', error);
+    return [];
   }
 }
 
@@ -26,16 +48,17 @@ export function saveStoredMemories(memories: Memory[]): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(memories));
-  } catch (err) {
-    console.error('Error saving memories to localStorage:', err);
+  } catch (error) {
+    // Suele ser QuotaExceededError. Antes pasaba siempre porque las fotos se
+    // guardaban como data URLs base64; ahora solo se guardan URLs de Cloudinary.
+    console.error('No se pudieron guardar los recuerdos locales:', error);
   }
 }
 
 export function getActiveUser(): 'Ariel' | 'Jazmin' {
   if (typeof window === 'undefined') return 'Ariel';
   try {
-    const user = localStorage.getItem(ACTIVE_USER_KEY);
-    return user === 'Jazmin' ? 'Jazmin' : 'Ariel';
+    return localStorage.getItem(ACTIVE_USER_KEY) === 'Jazmin' ? 'Jazmin' : 'Ariel';
   } catch {
     return 'Ariel';
   }
@@ -45,199 +68,135 @@ export function setActiveUser(user: 'Ariel' | 'Jazmin'): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(ACTIVE_USER_KEY, user);
-  } catch (err) {
-    console.error('Error saving active user:', err);
+  } catch {
+    /* modo incognito: no es critico */
   }
 }
 
-export async function fetchAllMemories(): Promise<Memory[]> {
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('memories')
-        .select(`
-          id,
-          title,
-          description,
-          memory_date,
-          latitude,
-          longitude,
-          location_name,
-          stage_id,
-          created_by,
-          is_highlight,
-          created_at,
-          memory_participants (participant_name),
-          memory_media (id, url, media_type, caption, order_index)
-        `)
-        .order('memory_date', { ascending: false });
+// ----------------------------------------------------------------- API calls
+async function readError(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json();
+    return typeof data?.error === 'string' ? data.error : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
-      if (!error && data) {
-        const mapped: Memory[] = data.map((row: any) => ({
-          id: row.id,
-          title: row.title,
-          description: row.description,
-          date: row.memory_date,
-          locationName: row.location_name,
-          coordinates: [row.longitude, row.latitude],
-          stageId: row.stage_id,
-          createdBy: row.created_by,
-          highlight: row.is_highlight,
-          createdAt: row.created_at,
-          participants: (row.memory_participants || []).map((p: any) => p.participant_name as Participant),
-          media: (row.memory_media || [])
-            .sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0))
-            .map((m: any) => ({
-              id: m.id,
-              url: m.url,
-              type: m.media_type,
-              caption: m.caption,
-            })),
-        }));
-        return mapped;
-      }
-    } catch (err) {
-      console.warn('Supabase fetch error, using local storage fallback', err);
+export async function fetchAllMemories(): Promise<LoadResult> {
+  try {
+    const response = await fetch('/api/memories', { cache: 'no-store' });
+
+    if (response.status === 401) {
+      return { memories: getStoredMemories(), source: 'local', unauthorized: true };
     }
-  }
+    if (!response.ok) throw new ApiError(await readError(response, 'Error al cargar'), response.status);
 
-  return getStoredMemories();
-}
+    const data = await response.json();
+    const source: Source = data.source === 'supabase' ? 'supabase' : 'local';
 
-export async function createMemory(memory: Omit<Memory, 'id' | 'createdAt'>): Promise<Memory> {
-  const localId = 'mem-' + Date.now();
-  let created: Memory = {
-    ...memory,
-    id: localId,
-    createdAt: new Date().toISOString(),
-  };
-
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data: memoryRecord, error: memError } = await supabase
-        .from('memories')
-        .insert({
-          title: memory.title,
-          description: memory.description,
-          memory_date: memory.date,
-          latitude: memory.coordinates[1],
-          longitude: memory.coordinates[0],
-          location_name: memory.locationName,
-          stage_id: memory.stageId,
-          created_by: memory.createdBy,
-          is_highlight: Boolean(memory.highlight),
-        })
-        .select()
-        .single();
-
-      if (!memError && memoryRecord) {
-        created = {
-          ...created,
-          id: memoryRecord.id,
-          createdAt: memoryRecord.created_at,
-        };
-
-        if (memory.participants.length > 0) {
-          await supabase.from('memory_participants').insert(
-            memory.participants.map((p) => ({
-              memory_id: memoryRecord.id,
-              participant_name: p,
-            }))
-          );
-        }
-
-        if (memory.media.length > 0) {
-          await supabase.from('memory_media').insert(
-            memory.media.map((m, idx) => ({
-              memory_id: memoryRecord.id,
-              media_type: m.type,
-              url: m.url,
-              caption: m.caption || '',
-              order_index: idx,
-            }))
-          );
-        }
-      }
-    } catch (err) {
-      console.warn('Could not sync to Supabase, saved locally', err);
+    if (source === 'local') {
+      return { memories: getStoredMemories(), source, unauthorized: false };
     }
+
+    const memories = (data.memories ?? []) as Memory[];
+    saveStoredMemories(memories); // cache offline
+    return { memories, source, unauthorized: false };
+  } catch (error) {
+    console.warn('Sin conexion con el servidor, usando cache local', error);
+    return { memories: getStoredMemories(), source: 'local', unauthorized: false };
   }
-
-  const current = getStoredMemories();
-  const updated = [created, ...current.filter((m) => m.id !== created.id)];
-  saveStoredMemories(updated);
-
-  return created;
 }
 
-export async function updateMemory(memory: Memory): Promise<Memory> {
-  const current = getStoredMemories();
-  const updated = current.map((m) => (m.id === memory.id ? memory : m));
-  saveStoredMemories(updated);
+type MemoryDraft = Omit<Memory, 'id' | 'createdAt'>;
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase
-        .from('memories')
-        .update({
-          title: memory.title,
-          description: memory.description,
-          memory_date: memory.date,
-          latitude: memory.coordinates[1],
-          longitude: memory.coordinates[0],
-          location_name: memory.locationName,
-          stage_id: memory.stageId,
-          created_by: memory.createdBy,
-          is_highlight: Boolean(memory.highlight),
-        })
-        .eq('id', memory.id);
-
-      // Re-sync participants
-      await supabase.from('memory_participants').delete().eq('memory_id', memory.id);
-      if (memory.participants.length > 0) {
-        await supabase.from('memory_participants').insert(
-          memory.participants.map((p) => ({
-            memory_id: memory.id,
-            participant_name: p,
-          }))
-        );
-      }
-
-      // Re-sync media
-      await supabase.from('memory_media').delete().eq('memory_id', memory.id);
-      if (memory.media.length > 0) {
-        await supabase.from('memory_media').insert(
-          memory.media.map((m, idx) => ({
-            memory_id: memory.id,
-            media_type: m.type,
-            url: m.url,
-            caption: m.caption || '',
-            order_index: idx,
-          }))
-        );
-      }
-    } catch (err) {
-      console.warn('Could not update memory in Supabase, saved locally', err);
-    }
+export async function createMemory(draft: MemoryDraft, source: Source): Promise<Memory> {
+  if (source === 'local') {
+    const created: Memory = {
+      ...draft,
+      id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: new Date().toISOString(),
+    };
+    saveStoredMemories([created, ...getStoredMemories()]);
+    return created;
   }
 
-  return memory;
-}
+  const response = await fetch('/api/memories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+  });
 
-export async function deleteMemory(id: string): Promise<boolean> {
-  const current = getStoredMemories();
-  const updated = current.filter((m) => m.id !== id);
-  saveStoredMemories(updated);
-
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { error } = await supabase.from('memories').delete().eq('id', id);
-      if (error) throw error;
-    } catch (err) {
-      console.warn('Could not delete memory in Supabase, removed locally', err);
-    }
+  if (!response.ok) {
+    throw new ApiError(await readError(response, 'No se pudo guardar el recuerdo'), response.status);
   }
 
-  return true;
+  const { memory } = await response.json();
+  return memory as Memory;
 }
 
+export async function updateMemory(memory: Memory, source: Source): Promise<Memory> {
+  if (source === 'local') {
+    saveStoredMemories(getStoredMemories().map((m) => (m.id === memory.id ? memory : m)));
+    return memory;
+  }
+
+  const { id, createdAt, ...payload } = memory;
+  void createdAt;
+
+  const response = await fetch(`/api/memories/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(await readError(response, 'No se pudo actualizar el recuerdo'), response.status);
+  }
+
+  const data = await response.json();
+  return (data.memory ?? memory) as Memory;
+}
+
+export async function deleteMemory(id: string, source: Source): Promise<void> {
+  if (source === 'local') {
+    saveStoredMemories(getStoredMemories().filter((m) => m.id !== id));
+    return;
+  }
+
+  const response = await fetch(`/api/memories/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!response.ok) {
+    throw new ApiError(await readError(response, 'No se pudo eliminar el recuerdo'), response.status);
+  }
+}
+
+// -------------------------------------------------------------------- sesion
+export interface SessionState {
+  gateEnabled: boolean;
+  authenticated: boolean;
+}
+
+export async function fetchSessionState(): Promise<SessionState> {
+  try {
+    const response = await fetch('/api/session', { cache: 'no-store' });
+    if (!response.ok) return { gateEnabled: false, authenticated: true };
+    return (await response.json()) as SessionState;
+  } catch {
+    return { gateEnabled: false, authenticated: true };
+  }
+}
+
+export async function submitAccessCode(code: string): Promise<void> {
+  const response = await fetch('/api/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  if (!response.ok) {
+    throw new ApiError(await readError(response, 'Codigo incorrecto'), response.status);
+  }
+}
+
+export async function signOut(): Promise<void> {
+  await fetch('/api/session', { method: 'DELETE' });
+}

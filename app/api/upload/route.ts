@@ -1,11 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
+import { hasValidSession } from '@/lib/server/session';
+import { getClientIp, rateLimit } from '@/lib/server/rateLimit';
 
-// Configure Cloudinary server-side
-const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
 const apiKey = process.env.CLOUDINARY_API_KEY;
 const apiSecret = process.env.CLOUDINARY_API_SECRET;
-
 const isCloudinaryConfigured = Boolean(cloudName && apiKey && apiSecret);
 
 if (isCloudinaryConfigured) {
@@ -17,76 +20,152 @@ if (isCloudinaryConfigured) {
   });
 }
 
-export async function POST(request: NextRequest) {
+// Limites: protegen la cuota gratuita de Cloudinary y la memoria del servidor.
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;  // 15 MB
+const MAX_VIDEO_BYTES = 120 * 1024 * 1024; // 120 MB
+
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'image/avif',
+]);
+const ALLOWED_VIDEO_TYPES = new Set([
+  'video/mp4', 'video/quicktime', 'video/webm', 'video/x-m4v',
+]);
+
+/**
+ * Verifica los primeros bytes del archivo.
+ * El Content-Type que manda el navegador es solo una sugerencia: se puede
+ * falsear. Esto confirma que el binario realmente es lo que dice ser.
+ */
+function looksLikeRealMedia(buffer: Buffer, isVideo: boolean): boolean {
+  if (buffer.length < 12) return false;
+  const hex = buffer.subarray(0, 12).toString('hex').toLowerCase();
+  const ascii = buffer.subarray(0, 12).toString('latin1');
+
+  if (!isVideo) {
+    if (hex.startsWith('ffd8ff')) return true;                       // JPEG
+    if (hex.startsWith('89504e47')) return true;                     // PNG
+    if (ascii.startsWith('GIF8')) return true;                       // GIF
+    if (ascii.startsWith('RIFF') && ascii.includes('WEBP')) return true; // WEBP
+    if (ascii.slice(4, 8) === 'ftyp') return true;                   // HEIC / AVIF
+    return false;
+  }
+
+  if (ascii.slice(4, 8) === 'ftyp') return true;                     // MP4 / MOV / M4V
+  if (hex.startsWith('1a45dfa3')) return true;                       // WEBM / MKV
+  return false;
+}
+
+export async function POST(request: Request) {
+  // 1. Solo gente con sesion valida puede subir a nuestra cuenta.
+  if (!(await hasValidSession())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
+  // 2. Tope de subidas por IP: 40 archivos cada 10 minutos.
+  const limit = rateLimit(`upload:${getClientIp(request)}`, 40, 10 * 60 * 1000);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: `Limite de subidas alcanzado. Intenta en ${Math.ceil(limit.retryAfterSeconds / 60)} min.` },
+      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } }
+    );
+  }
+
+  if (!isCloudinaryConfigured) {
+    // Antes esto devolvia la foto entera como data URL base64. Eso terminaba
+    // guardado en la base y en localStorage, rompiendo la cuota del navegador.
+    return NextResponse.json(
+      { error: 'El almacenamiento de fotos no esta configurado. Falta CLOUDINARY_API_SECRET.' },
+      { status: 503 }
+    );
+  }
+
+  let file: File | null = null;
   try {
     const formData = await request.formData();
-    const file = formData.get('file') as File | null;
+    const entry = formData.get('file');
+    file = entry instanceof File ? entry : null;
+  } catch {
+    return NextResponse.json({ error: 'No se pudo leer el archivo' }, { status: 400 });
+  }
 
-    if (!file) {
-      return NextResponse.json({ error: 'No se envió ningún archivo' }, { status: 400 });
-    }
+  if (!file) {
+    return NextResponse.json({ error: 'No se envio ningun archivo' }, { status: 400 });
+  }
 
-    const isVideo = file.type.startsWith('video');
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+  // 3. Tipo declarado dentro de la lista permitida.
+  const declaredType = file.type.toLowerCase();
+  const isVideo = ALLOWED_VIDEO_TYPES.has(declaredType);
+  const isImage = ALLOWED_IMAGE_TYPES.has(declaredType);
+  if (!isVideo && !isImage) {
+    return NextResponse.json(
+      { error: 'Formato no permitido. Se aceptan JPG, PNG, WEBP, HEIC, GIF, MP4, MOV y WEBM.' },
+      { status: 415 }
+    );
+  }
 
-    // If Cloudinary credentials are configured, attempt upload to Cloudinary
-    if (isCloudinaryConfigured) {
-      try {
-        const uploadPromise = new Promise<{ secure_url: string }>((resolve, reject) => {
-          const stream = cloudinary.uploader.upload_stream(
-            {
-              folder: 'nossa_historia',
-              resource_type: isVideo ? 'video' : 'image',
-              transformation: isVideo ? undefined : [{ quality: 'auto', fetch_format: 'auto' }],
-            },
-            (error, result) => {
-              if (error || !result) {
-                reject(error || new Error('Error al subir a Cloudinary'));
-              } else {
-                resolve(result);
-              }
-            }
-          );
-          stream.end(buffer);
-        });
+  // 4. Tamanio antes de cargar nada en memoria.
+  const maxBytes = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  if (file.size > maxBytes) {
+    return NextResponse.json(
+      { error: `El archivo pesa demasiado. Maximo ${Math.round(maxBytes / 1024 / 1024)} MB.` },
+      { status: 413 }
+    );
+  }
+  if (file.size === 0) {
+    return NextResponse.json({ error: 'El archivo esta vacio' }, { status: 400 });
+  }
 
-        const uploaded = await uploadPromise;
-        return NextResponse.json({
-          url: uploaded.secure_url,
-          type: isVideo ? 'video' : 'image',
-          provider: 'cloudinary',
-        });
-      } catch (cloudErr: any) {
-        console.error('Cloudinary upload error:', cloudErr);
-        // If Cloudinary credentials mismatch, return informative error
-        return NextResponse.json(
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  // 5. El contenido real coincide con lo declarado.
+  if (!looksLikeRealMedia(buffer, isVideo)) {
+    return NextResponse.json(
+      { error: 'El archivo no parece una foto o video valido.' },
+      { status: 415 }
+    );
+  }
+
+  try {
+    const uploaded = await new Promise<{ secure_url: string; public_id: string; width?: number; height?: number }>(
+      (resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
           {
-            error: cloudErr?.message || 'Error de autenticación con Cloudinary. Revisa tu API Key y API Secret.',
-            details: cloudErr,
+            folder: 'nossa_historia',
+            resource_type: isVideo ? 'video' : 'image',
+            // Nombre generado por Cloudinary: no filtramos el nombre original,
+            // que puede llevar datos personales o rutas del telefono.
+            use_filename: false,
+            unique_filename: true,
+            overwrite: false,
+            invalidate: true,
+            transformation: isVideo
+              ? undefined
+              : [{ quality: 'auto:good', fetch_format: 'auto' }],
           },
-          { status: 400 }
+          (error, result) => {
+            if (error || !result) {
+              reject(error ?? new Error('Cloudinary no devolvio resultado'));
+            } else {
+              resolve(result as { secure_url: string; public_id: string });
+            }
+          }
         );
+        stream.end(buffer);
       }
-    }
-
-    // Fallback: If Cloudinary keys are not set in .env yet, return base64 data url
-    console.warn('Cloudinary keys not set in .env.local; using local buffer fallback.');
-    const mimeType = file.type || (isVideo ? 'video/mp4' : 'image/jpeg');
-    const base64 = buffer.toString('base64');
-    const dataUrl = `data:${mimeType};base64,${base64}`;
+    );
 
     return NextResponse.json({
-      url: dataUrl,
+      url: uploaded.secure_url,
+      publicId: uploaded.public_id,
       type: isVideo ? 'video' : 'image',
-      provider: 'local-fallback',
-      warning: 'Configura CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET en .env.local para producción.',
     });
-  } catch (error: any) {
-    console.error('Upload route error:', error);
+  } catch (error) {
+    // El detalle queda en el log del servidor. Al cliente solo un mensaje util:
+    // devolver el objeto de error revelaba configuracion interna.
+    console.error('[api/upload] Cloudinary', error);
     return NextResponse.json(
-      { error: error?.message || 'Error al procesar el archivo' },
-      { status: 500 }
+      { error: 'No se pudo subir el archivo. Revisa las credenciales de Cloudinary.' },
+      { status: 502 }
     );
   }
 }

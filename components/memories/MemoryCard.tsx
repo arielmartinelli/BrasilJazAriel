@@ -1,131 +1,139 @@
 'use client';
 
 import React from 'react';
+import { motion } from 'framer-motion';
+import { MapPin, Camera, Film, Dog, Crosshair } from 'lucide-react';
 import { Memory, STAGES } from '@/lib/types';
 import { StageIcon } from '@/components/ui/Icons';
-import { MapPin, Camera, Film, Dog } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { formatMemoryDate } from '@/lib/dates';
+import { safeImageSrc, thumbUrl, videoPosterUrl } from '@/lib/media';
 
 interface MemoryCardProps {
   memory: Memory;
   onClick: (memory: Memory) => void;
   onFlyTo?: (memory: Memory) => void;
+  /** Las primeras tarjetas visibles cargan con prioridad; el resto, en diferido. */
+  priority?: boolean;
 }
 
-export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, onFlyTo }) => {
+export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, onFlyTo, priority = false }) => {
   const stage = STAGES.find((s) => s.id === memory.stageId);
   const photosCount = memory.media.filter((m) => m.type === 'image').length;
   const videosCount = memory.media.filter((m) => m.type === 'video').length;
-  const mainImage = memory.media.find((m) => m.type === 'image')?.url || memory.media[0]?.url;
   const hasBruno = memory.participants.includes('Bruno');
 
-  const formattedDate = new Date(memory.date + 'T00:00:00').toLocaleDateString('es-AR', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  const firstImage = memory.media.find((m) => m.type === 'image')?.url;
+  const firstVideo = memory.media.find((m) => m.type === 'video')?.url;
+  // Miniatura de 640px en vez de la foto original: la tarjeta nunca pasa
+  // de ~420px de ancho, así que descargar 4 MB era desperdicio puro.
+  const cover = firstImage
+    ? safeImageSrc(thumbUrl(firstImage, { width: 640, height: 480 }))
+    : firstVideo
+      ? safeImageSrc(videoPosterUrl(firstVideo, 640))
+      : '';
 
   return (
     <motion.article
-      whileHover={{ y: -2 }}
+      whileHover={{ y: -3 }}
       whileTap={{ scale: 0.99 }}
-      transition={{ duration: 0.15 }}
-      onClick={() => onClick(memory)}
-      className="bg-white border border-slate-200 rounded-2xl overflow-hidden cursor-pointer group flex flex-col transition-all duration-200 hover:border-emerald-300 hover:shadow-md"
+      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition-colors duration-200 hover:border-emerald-300 hover:shadow-lg"
     >
-      {/* Photo Header */}
-      <div className="relative aspect-[4/3] w-full bg-slate-100 overflow-hidden">
-        {mainImage ? (
-          <img
-            src={mainImage}
-            alt={memory.title}
-            className="w-full h-full object-cover group-hover:scale-104 transition-transform duration-500 ease-out"
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-slate-400">
-            <StageIcon name={stage?.iconName || 'home'} className="w-8 h-8" />
-          </div>
-        )}
-
-        {/* Top Badges */}
-        <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between gap-1 pointer-events-none">
-          {stage && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-white/95 text-slate-800 backdrop-blur-xs shadow-xs flex items-center gap-1.5">
-              <StageIcon name={stage.iconName} className="w-3 h-3 text-emerald-700" />
-              <span className="truncate max-w-[110px]">{stage.title}</span>
-            </span>
-          )}
-
-          {hasBruno && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-amber-950 shadow-xs flex items-center gap-1">
-              <Dog className="w-3 h-3" />
-              <span>Bruno</span>
-            </span>
-          )}
-        </div>
-
-        {/* Media Counts */}
-        <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 pointer-events-none">
-          {photosCount > 0 && (
-            <div className="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[10px] font-semibold flex items-center gap-1">
-              <Camera className="w-3 h-3" />
-              <span>{photosCount}</span>
+      {/* Toda la tarjeta es un botón real: antes era un div con onClick, sin
+          acceso por teclado ni rol semántico. */}
+      <button
+        type="button"
+        onClick={() => onClick(memory)}
+        className="flex flex-1 flex-col text-left"
+        aria-label={`Abrir recuerdo: ${memory.title}`}
+      >
+        <div className="relative aspect-4/3 w-full overflow-hidden bg-slate-100">
+          {cover ? (
+            <img
+              src={cover}
+              alt=""
+              width={640}
+              height={480}
+              loading={priority ? 'eager' : 'lazy'}
+              fetchPriority={priority ? 'high' : 'auto'}
+              decoding="async"
+              className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-slate-300">
+              <StageIcon name={stage?.iconName ?? 'home'} className="h-9 w-9" />
             </div>
           )}
-          {videosCount > 0 && (
-            <div className="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[10px] font-semibold flex items-center gap-1">
-              <Film className="w-3 h-3" />
-              <span>{videosCount}</span>
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Body */}
-      <div className="p-4 flex-1 flex flex-col justify-between gap-2.5">
-        <div>
-          {/* Date & Author */}
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-            <span className="font-semibold text-slate-500 text-[11px]">
-              {formattedDate}
-            </span>
-            <span className="text-[11px] font-medium text-slate-500">
-              por {memory.createdBy}
-            </span>
+          <div className="pointer-events-none absolute inset-x-2.5 top-2.5 flex items-center justify-between gap-1">
+            {stage && (
+              <span className="flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm backdrop-blur-sm">
+                <StageIcon name={stage.iconName} className="h-3 w-3 text-emerald-700" />
+                <span className="max-w-[120px] truncate">{stage.title}</span>
+              </span>
+            )}
+
+            {hasBruno && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-400 px-2 py-1 text-xs font-bold text-amber-950 shadow-sm">
+                <Dog className="h-3 w-3" />
+                <span>Bruno</span>
+              </span>
+            )}
           </div>
 
-          {/* Title */}
-          <h3 className="font-bold text-base text-slate-900 line-clamp-1 group-hover:text-emerald-700 transition-colors">
+          <div className="pointer-events-none absolute bottom-2.5 right-2.5 flex items-center gap-1.5">
+            {photosCount > 0 && (
+              <span className="flex items-center gap-1 rounded-md bg-black/65 px-2 py-0.5 text-xs font-semibold text-white backdrop-blur-sm">
+                <Camera className="h-3 w-3" />
+                {photosCount}
+                <span className="sr-only-focusable">fotos</span>
+              </span>
+            )}
+            {videosCount > 0 && (
+              <span className="flex items-center gap-1 rounded-md bg-black/65 px-2 py-0.5 text-xs font-semibold text-white backdrop-blur-sm">
+                <Film className="h-3 w-3" />
+                {videosCount}
+                <span className="sr-only-focusable">videos</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-1 flex-col gap-2 p-4">
+          <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+            <time dateTime={memory.date} className="font-semibold">
+              {formatMemoryDate(memory.date)}
+            </time>
+            <span className="font-medium">por {memory.createdBy === 'Jazmin' ? 'Jazmín' : 'Ariel'}</span>
+          </div>
+
+          <h3 className="line-clamp-1 text-base font-bold text-slate-900 transition-colors group-hover:text-emerald-700">
             {memory.title}
           </h3>
 
-          {/* Description */}
-          <p className="text-xs text-slate-600 line-clamp-2 mt-1 leading-relaxed">
-            {memory.description}
-          </p>
-        </div>
-
-        {/* Location & Map action */}
-        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-1 text-emerald-800 truncate text-[11px] font-medium">
-            <MapPin className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-            <span className="truncate">{memory.locationName}</span>
-          </div>
-
-          {onFlyTo && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onFlyTo(memory);
-              }}
-              title="Centrar en el mapa"
-              className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-emerald-700 transition shrink-0"
-            >
-              <MapPin className="w-3.5 h-3.5" />
-            </button>
+          {memory.description && (
+            <p className="line-clamp-2 text-sm leading-relaxed text-slate-600">{memory.description}</p>
           )}
         </div>
+      </button>
+
+      <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
+        <span className="flex min-w-0 items-center gap-1 text-xs font-medium text-emerald-800">
+          <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden />
+          <span className="truncate">{memory.locationName}</span>
+        </span>
+
+        {onFlyTo && (
+          <button
+            type="button"
+            onClick={() => onFlyTo(memory)}
+            title="Centrar en el mapa"
+            className="shrink-0 rounded-lg p-1.5 text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-700"
+          >
+            <Crosshair className="h-4 w-4" aria-hidden />
+            <span className="sr-only">Centrar en el mapa</span>
+          </button>
+        )}
       </div>
     </motion.article>
   );

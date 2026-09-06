@@ -1,236 +1,252 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Play, Pause, ChevronRight, ChevronLeft, MapPin, Camera, Images } from 'lucide-react';
 import { Memory, STAGES } from '@/lib/types';
 import { StageIcon, ParticipantBadge } from '@/components/ui/Icons';
 import { InteractiveMap, InteractiveMapRef } from '@/components/map/InteractiveMap';
-import { Play, Pause, ChevronRight, ChevronLeft, MapPin, Camera } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { formatMemoryDate } from '@/lib/dates';
+import { sortChronologically } from '@/lib/stats';
+import { safeImageSrc, thumbUrl, videoPosterUrl } from '@/lib/media';
 
 interface StoryTourProps {
   memories: Memory[];
   onOpenDetail: (memory: Memory) => void;
 }
 
-export const StoryTour: React.FC<StoryTourProps> = ({ memories, onOpenDetail }) => {
-  const chronologicalMemories = [...memories].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-  );
+const AUTOPLAY_MS = 5500;
 
-  const [currentIndex, setCurrentIndex] = useState(0);
+export const StoryTour: React.FC<StoryTourProps> = ({ memories, onOpenDetail }) => {
+  // Sin useMemo, cada render creaba un array nuevo y el efecto que hace flyTo
+  // se disparaba en bucle (dependía del objeto, no del id).
+  const chapters = useMemo(() => sortChronologically(memories), [memories]);
+
+  const [index, setIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const mapRef = useRef<InteractiveMapRef>(null);
-  const currentMemory = chronologicalMemories[currentIndex] || chronologicalMemories[0];
-  const stage = STAGES.find((s) => s.id === currentMemory?.stageId);
+
+  const total = chapters.length;
+  // Si cambian los filtros y quedan menos capítulos, el índice se acota al
+  // vuelo durante el render en lugar de corregirse con un efecto extra.
+  const safeIndex = total > 0 ? Math.min(index, total - 1) : 0;
+  const current = chapters[safeIndex];
+  const stage = STAGES.find((s) => s.id === current?.stageId);
 
   useEffect(() => {
-    if (currentMemory && mapRef.current) {
-      mapRef.current.flyToMemory(currentMemory, 13.5);
-    }
-  }, [currentIndex, currentMemory]);
+    if (!current) return;
+    mapRef.current?.flyToMemory(current, 13.5);
+    // Depende del id, no del objeto: evita vuelos repetidos en cada render.
+  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!isPlaying) return;
-    const timer = setInterval(() => {
-      setCurrentIndex((prev) => {
-        if (prev + 1 >= chronologicalMemories.length) {
+    if (!isPlaying || total <= 1) return;
+    const timer = window.setInterval(() => {
+      setIndex((value) => {
+        if (value + 1 >= total) {
           setIsPlaying(false);
           return 0;
         }
-        return prev + 1;
+        return value + 1;
       });
-    }, 5500);
+    }, AUTOPLAY_MS);
+    return () => window.clearInterval(timer);
+  }, [isPlaying, total]);
 
-    return () => clearInterval(timer);
-  }, [isPlaying, chronologicalMemories.length]);
+  const goNext = useCallback(() => setIndex((value) => Math.min(value + 1, total - 1)), [total]);
+  const goPrev = useCallback(() => setIndex((value) => Math.max(value - 1, 0)), []);
 
-  const handleNext = () => {
-    if (currentIndex < chronologicalMemories.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-    }
-  };
 
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-    }
-  };
+  // Flechas del teclado para recorrer la historia.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      if (event.key === 'ArrowRight') goNext();
+      if (event.key === 'ArrowLeft') goPrev();
+      if (event.key === ' ') {
+        event.preventDefault();
+        setIsPlaying((value) => !value);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [goNext, goPrev]);
 
-  if (chronologicalMemories.length === 0) {
+  if (total === 0 || !current) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-slate-50">
-        <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center mb-4 shadow-xs">
-          <MapPin className="w-7 h-7" />
-        </div>
-        <h3 className="text-lg font-bold text-slate-900 mb-1">
-          Comienza su historia en Brasil
-        </h3>
-        <p className="text-xs text-slate-500 max-w-sm mb-5 leading-relaxed">
-          Aún no hay momentos registrados. Cuando comiencen el viaje en auto, cada parada y recuerdo aparecerá aquí cronológicamente.
+      <div className="flex h-full flex-col items-center justify-center bg-slate-50 p-8 text-center">
+        <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800 shadow-xs">
+          <MapPin className="h-7 w-7" aria-hidden />
+        </span>
+        <h3 className="mb-1.5 text-lg font-bold text-slate-900">Su historia empieza acá</h3>
+        <p className="max-w-sm text-sm leading-relaxed text-slate-500">
+          Todavía no hay momentos que coincidan. Cargá el primer recuerdo del viaje y esta
+          sección se va a ir armando sola, en orden cronológico.
         </p>
       </div>
     );
   }
 
-  const formattedDate = new Date(currentMemory.date + 'T00:00:00').toLocaleDateString('es-AR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-
-  const mainPhoto = currentMemory.media.find((m) => m.type === 'image')?.url || currentMemory.media[0]?.url;
+  const photo = current.media.find((m) => m.type === 'image')?.url;
+  const video = current.media.find((m) => m.type === 'video')?.url;
+  const cover = photo
+    ? safeImageSrc(thumbUrl(photo, { width: 900, height: 560 }))
+    : video
+      ? safeImageSrc(videoPosterUrl(video, 900))
+      : '';
 
   return (
-    <div className="relative w-full h-full flex flex-col md:flex-row overflow-hidden bg-slate-50">
-      {/* Map (Top on Mobile, Right on Desktop) */}
-      <div className="w-full h-[45%] md:h-full md:flex-1 relative order-1 md:order-2">
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-slate-50 md:flex-row">
+      <div className="relative order-1 h-[45%] w-full md:order-2 md:h-full md:flex-1">
         <InteractiveMap
           ref={mapRef}
-          memories={chronologicalMemories}
-          selectedMemory={currentMemory}
-          onSelectMemory={(m) => {
-            const idx = chronologicalMemories.findIndex((item) => item.id === m.id);
-            if (idx !== -1) setCurrentIndex(idx);
+          memories={chapters}
+          selectedMemory={current}
+          onSelectMemory={(memory) => {
+            const found = chapters.findIndex((item) => item.id === memory.id);
+            if (found !== -1) setIndex(found);
           }}
+          // En el tour los pines son pocos y guiados: agruparlos confunde.
+          enableClustering={false}
+          showRouteByDefault
         />
       </div>
 
-      {/* Story Panel with FIXED header and FIXED bottom controls */}
-      <div className="w-full h-[55%] md:h-full md:w-[440px] xl:w-[480px] flex flex-col bg-white border-t md:border-t-0 md:border-r border-slate-200 z-20 order-2 md:order-1 shadow-sm">
-        {/* 1. FIXED TOP HEADER */}
-        <div className="p-4 sm:p-5 border-b border-slate-100 shrink-0 bg-white">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                Capítulo {currentIndex + 1} de {chronologicalMemories.length}
+      <div className="order-2 z-20 flex h-[55%] w-full flex-col border-t border-slate-200 bg-white shadow-sm md:order-1 md:h-full md:w-[440px] md:border-r md:border-t-0 xl:w-[480px]">
+        <div className="shrink-0 border-b border-slate-100 bg-white p-4 sm:p-5">
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800">
+                Capítulo {safeIndex + 1} de {total}
               </span>
               {stage && (
-                <span className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                  <StageIcon name={stage.iconName} className="w-3.5 h-3.5 text-emerald-700" />
-                  <span className="truncate max-w-[120px] sm:max-w-none">{stage.title}</span>
+                <span className="flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-700">
+                  <StageIcon name={stage.iconName} className="h-3.5 w-3.5 shrink-0 text-emerald-700" />
+                  <span className="truncate">{stage.title}</span>
                 </span>
               )}
             </div>
 
-            {/* Auto Play Button */}
             <button
-              onClick={() => setIsPlaying(!isPlaying)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold border border-slate-200 transition"
+              type="button"
+              onClick={() => setIsPlaying((value) => !value)}
+              aria-pressed={isPlaying}
+              className="flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-800 transition hover:bg-slate-200"
             >
               {isPlaying ? (
-                <>
-                  <Pause className="w-3 h-3 text-amber-600" />
-                  <span>Pausar</span>
-                </>
+                <><Pause className="h-3 w-3 text-amber-600" aria-hidden /> Pausar</>
               ) : (
-                <>
-                  <Play className="w-3 h-3 text-emerald-700 fill-emerald-700" />
-                  <span>Reproducir</span>
-                </>
+                <><Play className="h-3 w-3 fill-emerald-700 text-emerald-700" aria-hidden /> Reproducir</>
               )}
             </button>
           </div>
 
-          {/* Progress bar */}
-          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div
+            className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100"
+            role="progressbar"
+            aria-valuemin={1}
+            aria-valuemax={total}
+            aria-valuenow={safeIndex + 1}
+            aria-label="Progreso de la historia"
+          >
             <div
-              className="h-full bg-gradient-to-r from-emerald-600 to-amber-400 transition-all duration-500 rounded-full"
-              style={{ width: `${((currentIndex + 1) / chronologicalMemories.length) * 100}%` }}
+              className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-amber-400 transition-all duration-500"
+              style={{ width: `${((safeIndex + 1) / total) * 100}%` }}
             />
           </div>
         </div>
 
-        {/* 2. SCROLLABLE MIDDLE CONTENT */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col justify-start">
+        <div className="flex flex-1 flex-col justify-start overflow-y-auto p-4 sm:p-6">
           <AnimatePresence mode="wait">
-            <motion.div
-              key={currentMemory.id}
-              initial={{ opacity: 0, y: 8 }}
+            <motion.article
+              key={current.id}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-              className="flex flex-col gap-3 my-auto"
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.22 }}
+              className="my-auto flex flex-col gap-3"
             >
-              {mainPhoto && (
-                <div
-                  onClick={() => onOpenDetail(currentMemory)}
-                  className="cursor-pointer group relative aspect-[16/10] w-full rounded-2xl overflow-hidden shadow-xs border border-slate-200 bg-slate-100"
+              {cover && (
+                <button
+                  type="button"
+                  onClick={() => onOpenDetail(current)}
+                  className="group relative aspect-16/10 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-xs"
                 >
                   <img
-                    src={mainPhoto}
-                    alt={currentMemory.title}
-                    className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-500"
+                    src={cover}
+                    alt={current.title}
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
-                  <div className="absolute bottom-2.5 right-2.5 px-2.5 py-0.5 rounded-full bg-black/60 backdrop-blur-xs text-[10px] text-white font-medium flex items-center gap-1">
-                    <Camera className="w-3 h-3" />
-                    <span>{currentMemory.media.length} fotos</span>
-                  </div>
-                </div>
+                  <span className="absolute bottom-2.5 right-2.5 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-sm">
+                    <Camera className="h-3 w-3" aria-hidden />
+                    {current.media.length} {current.media.length === 1 ? 'archivo' : 'archivos'}
+                  </span>
+                </button>
               )}
 
-              {/* Date & Location */}
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <span className="font-semibold text-slate-600">
-                  {formattedDate}
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1 text-emerald-700 font-semibold truncate">
-                  <MapPin className="w-3 h-3 shrink-0" />
-                  {currentMemory.locationName}
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <time dateTime={current.date} className="font-semibold text-slate-600">
+                  {formatMemoryDate(current.date, 'long')}
+                </time>
+                <span aria-hidden>•</span>
+                <span className="flex min-w-0 items-center gap-1 font-semibold text-emerald-700">
+                  <MapPin className="h-3 w-3 shrink-0" aria-hidden />
+                  <span className="truncate">{current.locationName}</span>
                 </span>
               </div>
 
-              {/* Title */}
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-snug">
-                {currentMemory.title}
+              <h2 className="text-xl font-bold leading-snug tracking-tight text-slate-900 sm:text-2xl">
+                {current.title}
               </h2>
 
-              {/* Story */}
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                {currentMemory.description}
-              </p>
+              {current.description && (
+                <p className="text-sm leading-relaxed text-slate-600">{current.description}</p>
+              )}
 
-              {/* Participants */}
-              <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {currentMemory.participants.map((p) => (
-                    <ParticipantBadge key={p} participant={p} />
+              <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {current.participants.map((participant) => (
+                    <ParticipantBadge key={participant} participant={participant} />
                   ))}
                 </div>
-                <span className="text-[11px] text-slate-500 font-medium">
-                  por {currentMemory.createdBy}
+                <span className="shrink-0 text-xs font-medium text-slate-500">
+                  por {current.createdBy === 'Jazmin' ? 'Jazmín' : 'Ariel'}
                 </span>
               </div>
-            </motion.div>
+            </motion.article>
           </AnimatePresence>
         </div>
 
-        {/* 3. STRICTLY FIXED FOOTER CONTROLS (Always visible at bottom) */}
-        <div className="p-3.5 sm:p-4 bg-white/95 backdrop-blur-md border-t border-slate-200 shrink-0 z-30 shadow-lg md:shadow-none">
-          <div className="flex items-center justify-between gap-2.5 max-w-md mx-auto w-full">
+        <div className="z-30 shrink-0 border-t border-slate-200 bg-white/95 p-3.5 backdrop-blur-md sm:p-4">
+          <div className="mx-auto flex w-full max-w-md items-center justify-between gap-2.5">
             <button
-              onClick={handlePrev}
-              disabled={currentIndex === 0}
-              className="flex-1 py-2.5 px-3 rounded-full bg-slate-100 hover:bg-slate-200 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-semibold text-slate-700 border border-slate-200 flex items-center justify-center gap-1 transition"
+              type="button"
+              onClick={goPrev}
+              disabled={safeIndex === 0}
+              className="flex flex-1 items-center justify-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <ChevronLeft className="w-4 h-4" />
-              <span>Anterior</span>
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+              Anterior
             </button>
 
             <button
-              onClick={() => onOpenDetail(currentMemory)}
-              className="py-2.5 px-4 rounded-full bg-slate-100 hover:bg-slate-200 active:scale-95 text-xs font-bold text-emerald-800 border border-slate-200 transition"
+              type="button"
+              onClick={() => onOpenDetail(current)}
+              className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-4 py-2.5 text-xs font-bold text-emerald-800 transition hover:bg-slate-200 active:scale-95"
             >
+              <Images className="h-4 w-4" aria-hidden />
               Ver fotos
             </button>
 
             <button
-              onClick={handleNext}
-              disabled={currentIndex === chronologicalMemories.length - 1}
-              className="flex-1 py-2.5 px-3 rounded-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold text-white flex items-center justify-center gap-1 transition shadow-xs"
+              type="button"
+              onClick={goNext}
+              disabled={safeIndex === total - 1}
+              className="flex flex-1 items-center justify-center gap-1 rounded-full bg-emerald-600 px-3 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <span>Siguiente</span>
-              <ChevronRight className="w-4 h-4" />
+              Siguiente
+              <ChevronRight className="h-4 w-4" aria-hidden />
             </button>
           </div>
         </div>
