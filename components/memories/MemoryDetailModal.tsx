@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Memory, STAGES } from '@/lib/types';
 import { StageIcon, ParticipantBadge } from '@/components/ui/Icons';
-import { X, Calendar, MapPin, Share2, Compass, Check, ChevronLeft, ChevronRight, Edit3, Trash2 } from 'lucide-react';
+import { X, Calendar, MapPin, Share2, Compass, Check, ChevronLeft, ChevronRight, Edit3, Trash2, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface MemoryDetailModalProps {
@@ -191,10 +191,21 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
               {memory.title}
             </h2>
 
-            {/* Location */}
-            <div className="flex items-center gap-1.5 text-xs sm:text-sm text-emerald-700 font-semibold">
-              <MapPin className="w-4 h-4 shrink-0" />
-              <span>{memory.locationName}</span>
+            {/* Location & Google Maps Link */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm text-emerald-700 font-semibold">
+                <MapPin className="w-4 h-4 shrink-0" />
+                <span>{memory.locationName}</span>
+              </div>
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${memory.coordinates[1]},${memory.coordinates[0]}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] font-bold text-slate-700 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 px-3 py-1 rounded-full border border-slate-200 hover:border-emerald-200 transition flex items-center gap-1.5"
+              >
+                <span>Google Maps</span>
+                <ExternalLink className="w-3 h-3 text-emerald-600" />
+              </a>
             </div>
 
             {/* Story Text */}

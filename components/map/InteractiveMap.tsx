@@ -2,8 +2,9 @@
 
 import React, { useEffect, useRef, useImperativeHandle, forwardRef, useState } from 'react';
 import { Memory } from '@/lib/types';
-import { Compass, Layers, ZoomIn, ZoomOut } from 'lucide-react';
+import { Compass, Layers, ZoomIn, ZoomOut, Navigation } from 'lucide-react';
 import type * as LeafletType from 'leaflet';
+import { getAccurateCurrentPosition } from '@/lib/geoUtils';
 
 export interface InteractiveMapRef {
   flyToMemory: (memory: Memory, customZoom?: number) => void;
@@ -43,7 +44,9 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
     const currentTileLayerRef = useRef<LeafletType.TileLayer | null>(null);
     const markersLayerRef = useRef<LeafletType.LayerGroup | null>(null);
     const LRef = useRef<typeof LeafletType | null>(null);
+    const userMarkerRef = useRef<LeafletType.Marker | null>(null);
     const [selectedTileIdx, setSelectedTileIdx] = useState(0);
+    const [isLocating, setIsLocating] = useState(false);
 
     // Florianópolis coordinates: [lat, lng]
     const DEFAULT_CENTER: [number, number] = [-27.6000, -48.5496];
@@ -259,6 +262,47 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
             className="w-10 h-10 rounded-xl bg-white/95 hover:bg-white text-emerald-700 border border-slate-200 shadow-md flex items-center justify-center backdrop-blur-md transition"
           >
             <Compass className="w-4 h-4" />
+          </button>
+
+          {/* User GPS Location */}
+          <button
+            onClick={async () => {
+              if (isLocating) return;
+              setIsLocating(true);
+              try {
+                const pos = await getAccurateCurrentPosition();
+                if (mapRef.current) {
+                  mapRef.current.flyTo([pos[1], pos[0]], 14, { duration: 1 });
+                  const L = LRef.current || (await import('leaflet')).default;
+                  if (!userMarkerRef.current) {
+                    const iconHtml = `
+                      <div class="relative flex items-center justify-center">
+                        <div class="w-6 h-6 rounded-full bg-sky-500 border-2 border-white shadow-lg animate-pulse"></div>
+                        <div class="absolute -inset-1 rounded-full bg-sky-400 opacity-30 animate-ping"></div>
+                      </div>
+                    `;
+                    const icon = L.divIcon({
+                      html: iconHtml,
+                      className: 'user-loc-pin',
+                      iconSize: [24, 24],
+                      iconAnchor: [12, 12],
+                    });
+                    userMarkerRef.current = L.marker([pos[1], pos[0]], { icon }).addTo(mapRef.current);
+                  } else {
+                    userMarkerRef.current.setLatLng([pos[1], pos[0]]);
+                  }
+                }
+              } catch {
+                alert('No se pudo acceder a tu ubicación GPS. Asegúrate de tener los permisos activados en tu navegador.');
+              } finally {
+                setIsLocating(false);
+              }
+            }}
+            disabled={isLocating}
+            title="Mi ubicación actual GPS"
+            className="w-10 h-10 rounded-xl bg-white/95 hover:bg-white text-emerald-700 border border-slate-200 shadow-md flex items-center justify-center backdrop-blur-md transition"
+          >
+            <Navigation className={`w-4 h-4 ${isLocating ? 'animate-spin text-emerald-500' : ''}`} />
           </button>
         </div>
 

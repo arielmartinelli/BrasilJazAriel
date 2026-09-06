@@ -4,8 +4,9 @@ import React, { useState } from 'react';
 import { Memory, Participant, StageId, STAGES, MediaItem } from '@/lib/types';
 import { LocationPickerMap } from '@/components/map/LocationPickerMap';
 import { StageIcon } from '@/components/ui/Icons';
-import { X, MapPin, Calendar, Camera, UploadCloud, Trash2, Check, Sparkles, Loader2 } from 'lucide-react';
+import { X, MapPin, Calendar, Camera, UploadCloud, Trash2, Check, Sparkles, Loader2, Navigation } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { getAccurateCurrentPosition, reverseGeocode } from '@/lib/geoUtils';
 
 interface CreateMemoryModalProps {
   isOpen: boolean;
@@ -29,8 +30,23 @@ export const CreateMemoryModal: React.FC<CreateMemoryModalProps> = ({
   
   // Default coordinates: Florianópolis
   const [coordinates, setCoordinates] = useState<[number, number]>([-48.5496, -27.6000]);
-  const [locationName, setLocationName] = useState('Florianópolis, Santa Catarina');
+  const [locationName, setLocationName] = useState('');
   const [isPickingLocation, setIsPickingLocation] = useState(false);
+  const [isQuickGpsLoading, setIsQuickGpsLoading] = useState(false);
+
+  const handleQuickGps = async () => {
+    setIsQuickGpsLoading(true);
+    try {
+      const pos = await getAccurateCurrentPosition();
+      setCoordinates(pos);
+      const name = await reverseGeocode(pos[1], pos[0]);
+      setLocationName(name || 'Mi ubicación actual');
+    } catch {
+      alert('No pudimos acceder a tu GPS. Puedes abrir el mapa para seleccionar el lugar o pegar un link de Google Maps.');
+    } finally {
+      setIsQuickGpsLoading(false);
+    }
+  };
 
   // Media items (initially empty in production)
   const [mediaList, setMediaList] = useState<MediaItem[]>([]);
@@ -266,9 +282,20 @@ export const CreateMemoryModal: React.FC<CreateMemoryModalProps> = ({
 
           {/* Location Picker */}
           <div>
-            <label className="text-xs font-semibold text-slate-800 block mb-1">
-              Ubicación en el mapa <span className="text-rose-500">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-slate-800">
+                Ubicación en el mapa <span className="text-rose-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={handleQuickGps}
+                disabled={isQuickGpsLoading}
+                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 active:scale-95 transition bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200"
+              >
+                <Navigation className={`w-3 h-3 ${isQuickGpsLoading ? 'animate-spin' : ''}`} />
+                <span>{isQuickGpsLoading ? 'Obteniendo GPS...' : '📍 Usar GPS actual'}</span>
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => setIsPickingLocation(true)}
@@ -276,10 +303,10 @@ export const CreateMemoryModal: React.FC<CreateMemoryModalProps> = ({
             >
               <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-800 truncate">
                 <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span className="truncate font-medium">{locationName || 'Tocar para seleccionar lugar'}</span>
+                <span className="truncate font-medium">{locationName || 'Tocar para elegir en mapa o buscar lugar'}</span>
               </div>
               <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
-                Cambiar pin
+                Elegir en mapa
               </span>
             </button>
           </div>
