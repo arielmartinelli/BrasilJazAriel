@@ -105,16 +105,12 @@ export async function fetchAllMemories(): Promise<Memory[]> {
 }
 
 export async function createMemory(memory: Omit<Memory, 'id' | 'createdAt'>): Promise<Memory> {
-  const newId = 'mem-' + Date.now();
-  const created: Memory = {
+  const localId = 'mem-' + Date.now();
+  let created: Memory = {
     ...memory,
-    id: newId,
+    id: localId,
     createdAt: new Date().toISOString(),
   };
-
-  const current = getStoredMemories();
-  const updated = [created, ...current];
-  saveStoredMemories(updated);
 
   if (isSupabaseConfigured && supabase) {
     try {
@@ -135,6 +131,12 @@ export async function createMemory(memory: Omit<Memory, 'id' | 'createdAt'>): Pr
         .single();
 
       if (!memError && memoryRecord) {
+        created = {
+          ...created,
+          id: memoryRecord.id,
+          createdAt: memoryRecord.created_at,
+        };
+
         if (memory.participants.length > 0) {
           await supabase.from('memory_participants').insert(
             memory.participants.map((p) => ({
@@ -160,6 +162,10 @@ export async function createMemory(memory: Omit<Memory, 'id' | 'createdAt'>): Pr
       console.warn('Could not sync to Supabase, saved locally', err);
     }
   }
+
+  const current = getStoredMemories();
+  const updated = [created, ...current.filter((m) => m.id !== created.id)];
+  saveStoredMemories(updated);
 
   return created;
 }
@@ -234,3 +240,4 @@ export async function deleteMemory(id: string): Promise<boolean> {
 
   return true;
 }
+

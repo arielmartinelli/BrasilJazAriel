@@ -4,6 +4,7 @@ import React from 'react';
 import { Map, BookOpen, LayoutGrid, Plus } from 'lucide-react';
 import { ArgBraFlagLogo } from './ArgBraFlagLogo';
 import { setActiveUser } from '@/lib/memoryStore';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
 
 interface NavbarProps {
   currentView: 'map' | 'story' | 'feed';
@@ -39,6 +40,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-900">
                 Nossa História
               </h1>
+              {isSupabaseConfigured ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-300/60" title="Sincronizado en la nube (Ariel & Jazmín)">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Nube
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800 border border-amber-300/60" title="Modo local (faltan variables en Vercel)">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  Local
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 font-medium">
               Ariel, Jazmín & Bruno en Brasil
