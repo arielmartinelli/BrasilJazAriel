@@ -13,7 +13,7 @@ import { CreateMemoryModal } from '@/components/memories/CreateMemoryModal';
 import { EditMemoryModal } from '@/components/memories/EditMemoryModal';
 import { StoryTour } from '@/components/story/StoryTour';
 import { RoadTripLoader } from '@/components/ui/RoadTripLoader';
-import { Plus, MapPin, ChevronUp, Palmtree, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Plus, MapPin, ChevronUp, Palmtree, PanelRightClose, PanelRightOpen, Maximize2, ListFilter, Layers } from 'lucide-react';
 
 export default function Home() {
   const [showRoadTripLoader, setShowRoadTripLoader] = useState(true);
@@ -25,7 +25,7 @@ export default function Home() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [activeUser, setActiveUserState] = useState<'Ariel' | 'Jazmin'>('Ariel');
-  const [isSidePanelOpen, setIsSidePanelOpen] = useState(true);
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
 
   // Filters
   const [selectedStage, setSelectedStage] = useState<StageId | 'all'>('all');
@@ -128,9 +128,13 @@ export default function Home() {
 
       {/* VIEW 1: MAP INTERACTIVE VIEW (Full Height & Full Length) */}
       {currentView === 'map' && (
-        <div className="relative flex-1 w-full h-[calc(100dvh-4rem-4.5rem)] md:h-[calc(100vh-4rem)] flex overflow-hidden">
-          {/* Main Map (Occupies full length & height) */}
-          <div className="relative flex-1 h-full w-full">
+        <div className="relative flex-1 w-full h-[calc(100dvh-4rem-4.5rem)] md:h-[calc(100vh-4rem)] flex flex-col md:flex-row overflow-hidden">
+          {/* Main Map */}
+          <div
+            className={`relative w-full transition-all duration-300 ${
+              isMapExpanded ? 'h-full flex-1' : 'h-[44vh] shrink-0 md:h-full md:flex-1'
+            }`}
+          >
             <InteractiveMap
               ref={mapRef}
               memories={filteredMemories}
@@ -141,31 +145,34 @@ export default function Home() {
               }}
             />
 
-            {/* Desktop Toggle Button to Expand Map Full-Width */}
-            <button
-              onClick={() => {
-                setIsSidePanelOpen(!isSidePanelOpen);
-                setTimeout(() => mapRef.current?.resize(), 200);
-              }}
-              title={isSidePanelOpen ? "Ocultar panel y ver mapa completo" : "Mostrar panel de recuerdos"}
-              className="hidden md:flex items-center gap-1.5 absolute top-4 left-4 z-10 px-3 py-2 rounded-xl bg-white/95 text-slate-700 hover:text-slate-900 border border-slate-200 shadow-md backdrop-blur-md text-xs font-semibold transition"
-            >
-              {isSidePanelOpen ? (
-                <>
-                  <PanelRightClose className="w-4 h-4 text-emerald-700" />
-                  <span>Expandir mapa</span>
-                </>
-              ) : (
-                <>
-                  <PanelRightOpen className="w-4 h-4 text-emerald-700" />
-                  <span>Ver lista ({filteredMemories.length})</span>
-                </>
-              )}
-            </button>
+            {/* Bottom Toggle Button to Expand or Show List (Visible on both mobile & desktop) */}
+            <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const next = !isMapExpanded;
+                  setIsMapExpanded(next);
+                  setTimeout(() => mapRef.current?.resize(), 250);
+                }}
+                title={isMapExpanded ? "Ver filtros y lista de recuerdos" : "Expandir mapa a pantalla completa"}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/95 text-slate-800 hover:text-slate-950 border border-slate-200 shadow-md backdrop-blur-md text-xs font-semibold active:scale-95 transition"
+              >
+                {isMapExpanded ? (
+                  <>
+                    <ListFilter className="w-4 h-4 text-emerald-700" />
+                    <span>Ver lista y filtros ({filteredMemories.length})</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="w-4 h-4 text-emerald-700" />
+                    <span>Expandir mapa</span>
+                  </>
+                )}
+              </button>
+            </div>
 
-            {/* Mobile Bottom Selected Memory Card (positioned above floating dock) */}
-            {selectedMemory && (
-              <div className="md:hidden absolute bottom-20 inset-x-3 z-20">
+            {/* Mobile Bottom Selected Memory Card (positioned above floating dock when map is expanded) */}
+            {selectedMemory && isMapExpanded && (
+              <div className="md:hidden absolute bottom-16 inset-x-3 z-20">
                 <div
                   onClick={() => setDetailMemory(selectedMemory)}
                   className="bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl p-3 shadow-lg flex items-center gap-3 cursor-pointer"
@@ -199,10 +206,82 @@ export default function Home() {
             )}
           </div>
 
+          {/* Mobile Bottom Panel: Filters & Memories below the map (Visible when !isMapExpanded) */}
+          {!isMapExpanded && (
+            <div className="flex md:hidden flex-1 min-h-0 bg-white border-t border-slate-200 flex-col overflow-hidden z-10 shadow-lg">
+              {/* Header Bar of Mobile Panel */}
+              <div className="p-3 border-b border-slate-100 flex flex-col gap-2 shrink-0 bg-slate-50/70">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                    <Layers className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Recuerdos ({filteredMemories.length})</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsMapExpanded(true);
+                      setTimeout(() => mapRef.current?.resize(), 250);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 text-[11px] font-semibold active:scale-95 transition shadow-2xs"
+                  >
+                    <Maximize2 className="w-3 h-3 text-emerald-700" />
+                    <span>Expandir mapa</span>
+                  </button>
+                </div>
+                <MemoryFilters
+                  selectedStage={selectedStage}
+                  onSelectStage={setSelectedStage}
+                  selectedParticipant={selectedParticipant}
+                  onSelectParticipant={setSelectedParticipant}
+                  searchQuery={searchQuery}
+                  onSearchChange={setSearchQuery}
+                  totalCount={filteredMemories.length}
+                />
+              </div>
+
+              {/* Scrollable list of memories in mobile bottom panel */}
+              <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+                {filteredMemories.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center text-slate-400 text-xs">
+                    <Palmtree className="w-7 h-7 mb-1.5 text-slate-300 stroke-[1.5]" />
+                    No hay recuerdos con los filtros seleccionados.
+                  </div>
+                ) : (
+                  filteredMemories.map((mem) => (
+                    <MemoryCard
+                      key={mem.id}
+                      memory={mem}
+                      onClick={(m) => setDetailMemory(m)}
+                      onFlyTo={(m) => {
+                        setSelectedMemory(m);
+                        mapRef.current?.flyToMemory(m, 13.5);
+                      }}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Desktop Side Panel (Collapsible) */}
-          {isSidePanelOpen && (
+          {!isMapExpanded && (
             <aside className="hidden md:flex flex-col w-[380px] xl:w-[420px] h-full bg-white border-l border-slate-200 z-20 shadow-xs">
               <div className="p-4 border-b border-slate-200 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Recuerdos ({filteredMemories.length})
+                  </span>
+                  <button
+                    onClick={() => {
+                      setIsMapExpanded(true);
+                      setTimeout(() => mapRef.current?.resize(), 250);
+                    }}
+                    title="Expandir mapa completo"
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold transition"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Expandir mapa</span>
+                  </button>
+                </div>
                 <MemoryFilters
                   selectedStage={selectedStage}
                   onSelectStage={setSelectedStage}
@@ -363,10 +442,10 @@ export default function Home() {
         activeUser={activeUser}
       />
 
-      {/* Dynamic Road Trip Animated Loading Screen (CBA ➔ Brasil ~3s) */}
+      {/* Dynamic Road Trip Animated Loading Screen (CBA ➔ Brasil ~5s) */}
       {showRoadTripLoader && (
         <RoadTripLoader
-          durationMs={3000}
+          durationMs={5000}
           onComplete={() => setShowRoadTripLoader(false)}
         />
       )}
