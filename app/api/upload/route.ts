@@ -30,32 +30,44 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // If Cloudinary credentials are configured, upload to Cloudinary
+    // If Cloudinary credentials are configured, attempt upload to Cloudinary
     if (isCloudinaryConfigured) {
-      const uploadPromise = new Promise<{ secure_url: string }>((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          {
-            folder: 'nossa_historia',
-            resource_type: isVideo ? 'video' : 'image',
-            transformation: isVideo ? undefined : [{ quality: 'auto', fetch_format: 'auto' }],
-          },
-          (error, result) => {
-            if (error || !result) {
-              reject(error || new Error('Error al subir a Cloudinary'));
-            } else {
-              resolve(result);
+      try {
+        const uploadPromise = new Promise<{ secure_url: string }>((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: 'nossa_historia',
+              resource_type: isVideo ? 'video' : 'image',
+              transformation: isVideo ? undefined : [{ quality: 'auto', fetch_format: 'auto' }],
+            },
+            (error, result) => {
+              if (error || !result) {
+                reject(error || new Error('Error al subir a Cloudinary'));
+              } else {
+                resolve(result);
+              }
             }
-          }
-        );
-        stream.end(buffer);
-      });
+          );
+          stream.end(buffer);
+        });
 
-      const uploaded = await uploadPromise;
-      return NextResponse.json({
-        url: uploaded.secure_url,
-        type: isVideo ? 'video' : 'image',
-        provider: 'cloudinary',
-      });
+        const uploaded = await uploadPromise;
+        return NextResponse.json({
+          url: uploaded.secure_url,
+          type: isVideo ? 'video' : 'image',
+          provider: 'cloudinary',
+        });
+      } catch (cloudErr: any) {
+        console.error('Cloudinary upload error:', cloudErr);
+        // If Cloudinary credentials mismatch, return informative error
+        return NextResponse.json(
+          {
+            error: cloudErr?.message || 'Error de autenticación con Cloudinary. Revisa tu API Key y API Secret.',
+            details: cloudErr,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Fallback: If Cloudinary keys are not set in .env yet, return base64 data url

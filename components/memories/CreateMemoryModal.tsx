@@ -100,10 +100,13 @@ export const CreateMemoryModal: React.FC<CreateMemoryModalProps> = ({
             },
           ]);
         } else {
-          console.error('Upload failed for', file.name);
+          const errData = await response.json().catch(() => ({}));
+          console.error('Upload failed for', file.name, errData);
+          alert(`No se pudo subir la foto (${file.name}): ${errData.error || 'Verifica la clave API Secret de Cloudinary'}`);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error uploading file to Cloudinary:', err);
+        alert(`Error de red al subir la foto: ${err?.message || 'Error desconocido'}`);
       }
     }
 
