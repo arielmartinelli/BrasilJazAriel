@@ -7,6 +7,7 @@ import { StageIcon } from '@/components/ui/Icons';
 import { X, MapPin, Calendar, Camera, UploadCloud, Trash2, Check, Sparkles, Loader2, Navigation } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { getAccurateCurrentPosition, reverseGeocode } from '@/lib/geoUtils';
+import { showErrorAlert, showWarningAlert } from '@/lib/alerts';
 
 interface CreateMemoryModalProps {
   isOpen: boolean;
@@ -42,7 +43,10 @@ export const CreateMemoryModal: React.FC<CreateMemoryModalProps> = ({
       const name = await reverseGeocode(pos[1], pos[0]);
       setLocationName(name || 'Mi ubicación actual');
     } catch {
-      alert('No pudimos acceder a tu GPS. Puedes abrir el mapa para seleccionar el lugar o pegar un link de Google Maps.');
+      showErrorAlert(
+        'GPS no disponible',
+        'No pudimos acceder a tu GPS. Puedes abrir el mapa para seleccionar el lugar o pegar un link de Google Maps.'
+      );
     } finally {
       setIsQuickGpsLoading(false);
     }
@@ -102,11 +106,14 @@ export const CreateMemoryModal: React.FC<CreateMemoryModalProps> = ({
         } else {
           const errData = await response.json().catch(() => ({}));
           console.error('Upload failed for', file.name, errData);
-          alert(`No se pudo subir la foto (${file.name}): ${errData.error || 'Verifica la clave API Secret de Cloudinary'}`);
+          showErrorAlert(
+            'Error al subir foto',
+            `No se pudo subir "${file.name}". ${errData.error || 'Verifica la clave API Secret de Cloudinary.'}`
+          );
         }
       } catch (err: any) {
         console.error('Error uploading file to Cloudinary:', err);
-        alert(`Error de red al subir la foto: ${err?.message || 'Error desconocido'}`);
+        showErrorAlert('Error de red', `No se pudo conectar: ${err?.message || 'Error desconocido'}`);
       }
     }
 
@@ -136,7 +143,7 @@ export const CreateMemoryModal: React.FC<CreateMemoryModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !locationName.trim()) {
-      alert('Por favor completa el título y la ubicación.');
+      showWarningAlert('Faltan datos', 'Por favor completa el título y la ubicación.');
       return;
     }
 
