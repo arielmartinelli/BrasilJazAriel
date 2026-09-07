@@ -16,9 +16,20 @@ const securityHeaders = [
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
   // Apaga APIs del navegador que esta app no usa. La geolocalizacion queda
   // habilitada solo para el propio origen porque el GPS del mapa la necesita.
+  // Apaga APIs del navegador que esta app no usa.
+  //
+  // OJO con la sintaxis: `microphone=()` es lista vacia, o sea BLOQUEADO para
+  // todos, incluido el propio sitio. Con eso el navegador rechaza getUserMedia
+  // al instante y ni siquiera muestra el cartel de permiso. Para permitirlo hay
+  // que escribir `microphone=(self)`.
+  //
+  // - microphone=(self): lo necesitan las notas de voz
+  // - geolocation=(self): lo necesita el mapa
+  // - camera=(): sigue apagada. Sacar una foto con el celular usa el selector
+  //   de archivos del sistema, que no pasa por esta politica.
   {
     key: 'Permissions-Policy',
-    value: 'camera=(), microphone=(), payment=(), usb=(), interest-cohort=(), geolocation=(self)',
+    value: 'camera=(), microphone=(self), payment=(), usb=(), interest-cohort=(), geolocation=(self)',
   },
   // Aisla el contexto de navegacion de ventanas abiertas por terceros.
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },

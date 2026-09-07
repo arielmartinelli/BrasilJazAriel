@@ -107,10 +107,12 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecorded, disabl
       const name = (err as DOMException)?.name;
       setError(
         name === 'NotAllowedError'
-          ? 'No diste permiso para usar el micrófono.'
+          ? 'El navegador bloqueó el micrófono. Revisá el permiso del sitio (el candado en la barra de direcciones) y volvé a intentar.'
           : name === 'NotFoundError'
-            ? 'No encontramos ningún micrófono.'
-            : 'No pudimos acceder al micrófono.'
+            ? 'No encontramos ningún micrófono en este dispositivo.'
+            : name === 'NotReadableError'
+              ? 'El micrófono está siendo usado por otra aplicación.'
+              : 'No pudimos acceder al micrófono.'
       );
       releaseMic();
     } finally {
