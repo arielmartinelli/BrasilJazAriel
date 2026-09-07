@@ -17,11 +17,15 @@ export interface Stage {
   description: string;
 }
 
+export type MediaType = 'image' | 'video' | 'audio';
+
 export interface MediaItem {
   id: string;
   url: string;
-  type: 'image' | 'video';
+  type: MediaType;
   caption?: string;
+  /** Solo para audio y video: duracion en segundos. */
+  durationSeconds?: number;
 }
 
 export interface Memory {

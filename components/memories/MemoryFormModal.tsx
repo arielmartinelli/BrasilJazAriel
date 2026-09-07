@@ -4,7 +4,7 @@ import React, { useCallback, useId, useMemo, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   X, MapPin, Calendar, Camera, UploadCloud, Trash2, Check,
-  Sparkles, Loader2, Navigation, AlertCircle,
+  Sparkles, Loader2, Navigation, AlertCircle, Music, Film,
 } from 'lucide-react';
 import { Memory, Participant, StageId, STAGES, MediaItem } from '@/lib/types';
 import { LocationPickerMap } from '@/components/map/LocationPickerMap';
@@ -12,6 +12,10 @@ import { StageIcon } from '@/components/ui/Icons';
 import { getAccurateCurrentPosition, reverseGeocode } from '@/lib/geoUtils';
 import { showErrorAlert } from '@/lib/alerts';
 import { safeImageSrc, thumbUrl, videoPosterUrl } from '@/lib/media';
+import { AudioRecorder } from './AudioRecorder';
+import {
+  uploadToCloudinary, kindFromFile, MAX_BYTES, formatBytes, formatDuration,
+} from '@/lib/uploadClient';
 import { safeMediaUrl } from '@/lib/validation';
 import { useModalA11y } from '@/hooks/useModalA11y';
 
@@ -28,8 +32,6 @@ interface MemoryFormModalProps {
 
 const FLORIPA: [number, number] = [-48.5496, -27.6];
 const ALL_PARTICIPANTS: Participant[] = ['Ariel', 'Jazmin', 'Bruno'];
-const MAX_IMAGE_MB = 15;
-const MAX_VIDEO_MB = 120;
 
 function todayIso(): string {
   const now = new Date();
@@ -64,6 +66,7 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
   const [isLocating, setIsLocating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadPercent, setUploadPercent] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -133,64 +136,77 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
     }
   }, []);
 
-  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files?.length) return;
+  /**
+   * Sube archivos directo a Cloudinary, sin pasar por Vercel.
+   *
+   * Antes iban a /api/upload, que corre como Serverless Function: Vercel corta
+   * cualquier request de más de 4.5 MB, así que NINGÚN video llegaba a subirse
+   * (y tampoco las fotos grandes del celular). Ahora el servidor sólo firma el
+   * permiso y el archivo viaja directo al CDN, sin ese techo.
+   */
+  const uploadFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
 
-    const list = Array.from(files);
-    event.target.value = '';
     setIsUploading(true);
-
     const failures: string[] = [];
 
-    for (let i = 0; i < list.length; i += 1) {
-      const file = list[i];
-      setUploadStatus(`Subiendo ${i + 1} de ${list.length}: ${file.name}`);
+    for (let i = 0; i < files.length; i += 1) {
+      const file = files[i];
+      const kind = kindFromFile(file);
 
-      // Chequeo en el navegador para no gastar la subida en un archivo que el
-      // servidor va a rechazar igual.
-      const isVideo = file.type.startsWith('video');
-      const limitMb = isVideo ? MAX_VIDEO_MB : MAX_IMAGE_MB;
-      if (file.size > limitMb * 1024 * 1024) {
-        failures.push(`${file.name}: supera los ${limitMb} MB`);
+      if (!kind) {
+        failures.push(`${file.name}: formato no soportado`);
+        continue;
+      }
+      if (file.size > MAX_BYTES[kind]) {
+        failures.push(`${file.name}: pesa ${formatBytes(file.size)}, el máximo es ${formatBytes(MAX_BYTES[kind])}`);
         continue;
       }
 
+      const label = files.length > 1 ? `(${i + 1}/${files.length}) ` : '';
+      setUploadStatus(`${label}${file.name}`);
+      setUploadPercent(0);
+
       try {
-        const body = new FormData();
-        body.append('file', file);
-        const response = await fetch('/api/upload', { method: 'POST', body });
-        const data = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          failures.push(`${file.name}: ${data?.error ?? 'no se pudo subir'}`);
-          continue;
-        }
-
+        const uploaded = await uploadToCloudinary(file, kind, setUploadPercent);
         setMediaList((current) => [
           ...current,
           {
-            id: `med-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            url: data.url,
-            type: data.type,
-            caption: '',
+            id: uploaded.id,
+            url: uploaded.url,
+            type: uploaded.type,
+            caption: uploaded.caption,
+            durationSeconds: uploaded.durationSeconds,
           },
         ]);
-      } catch {
-        failures.push(`${file.name}: sin conexión`);
+      } catch (error) {
+        failures.push(`${file.name}: ${error instanceof Error ? error.message : 'falló la subida'}`);
       }
     }
 
     setIsUploading(false);
     setUploadStatus('');
+    setUploadPercent(0);
 
     if (failures.length > 0) {
       showErrorAlert(
-        failures.length === list.length ? 'No se pudo subir' : 'Algunos archivos fallaron',
+        failures.length === files.length ? 'No se pudo subir' : 'Algunos archivos fallaron',
         failures.slice(0, 4).join('\n')
       );
     }
   }, []);
+
+  const handleFileInput = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files?.length) return;
+    const list = Array.from(files);
+    event.target.value = '';
+    await uploadFiles(list);
+  }, [uploadFiles]);
+
+  const handleRecorded = useCallback(async (file: File) => {
+    await uploadFiles([file]);
+  }, [uploadFiles]);
 
   const handleAddMediaUrl = useCallback(() => {
     const value = mediaUrlInput.trim();
@@ -272,9 +288,11 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
       mediaList.map((item) => ({
         ...item,
         preview:
-          item.type === 'video'
-            ? safeImageSrc(videoPosterUrl(item.url, 200))
-            : safeImageSrc(thumbUrl(item.url, { width: 200, height: 200 })),
+          item.type === 'image'
+            ? safeImageSrc(thumbUrl(item.url, { width: 200, height: 200 }))
+            : item.type === 'video'
+              ? safeImageSrc(videoPosterUrl(item.url, 200))
+              : '', // el audio no tiene imagen: se muestra un ícono
       })),
     [mediaList]
   );
@@ -474,7 +492,7 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
                 <Camera className="h-4 w-4 text-emerald-600" aria-hidden />
-                Fotos y videos ({mediaList.length})
+                Fotos, videos y audios ({mediaList.length})
               </span>
               <label
                 className={`flex cursor-pointer items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 ${
@@ -489,8 +507,8 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
                 <input
                   type="file"
                   multiple
-                  accept="image/*,video/*"
-                  onChange={handleFileUpload}
+                  accept="image/*,video/*,audio/*"
+                  onChange={handleFileInput}
                   disabled={isUploading}
                   className="hidden"
                 />
@@ -498,15 +516,30 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
             </div>
 
             {isUploading && (
-              <p
+              <div
                 role="status"
                 aria-live="polite"
-                className="mb-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-800"
+                className="mb-2 flex flex-col gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5"
               >
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-emerald-600" aria-hidden />
-                <span className="truncate">{uploadStatus}</span>
-              </p>
+                <p className="flex items-center gap-2 text-sm text-emerald-900">
+                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-emerald-600" aria-hidden />
+                  <span className="truncate">{uploadStatus}</span>
+                  <span className="ml-auto shrink-0 font-bold tabular-nums">{uploadPercent}%</span>
+                </p>
+                {/* Con un video de 200 MB, sin esto la pantalla parece colgada. */}
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-emerald-200">
+                  <div
+                    className="h-full rounded-full bg-emerald-600 transition-all duration-200"
+                    style={{ width: `${uploadPercent}%` }}
+                  />
+                </div>
+              </div>
             )}
+
+            {/* Grabar una nota de voz sin salir de la app. */}
+            <div className="mb-2">
+              <AudioRecorder onRecorded={handleRecorded} disabled={isUploading} />
+            </div>
 
             {previews.length > 0 ? (
               <ul className="mb-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -514,9 +547,24 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
                   <li key={item.id} className="relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                     {item.preview ? (
                       <img src={item.preview} alt="" width={200} height={200} loading="lazy" className="h-full w-full object-cover" />
+                    ) : item.type === 'audio' ? (
+                      <span className="flex h-full w-full flex-col items-center justify-center gap-1 bg-violet-100 text-violet-800">
+                        <Music className="h-6 w-6" aria-hidden />
+                        <span className="text-xs font-bold tabular-nums">
+                          {formatDuration(item.durationSeconds) || 'Audio'}
+                        </span>
+                      </span>
                     ) : (
-                      <span className="flex h-full w-full items-center justify-center bg-slate-800 text-xs font-medium text-white">
-                        {item.type === 'video' ? 'Video' : 'Archivo'}
+                      <span className="flex h-full w-full flex-col items-center justify-center gap-1 bg-slate-800 text-white">
+                        <Film className="h-6 w-6" aria-hidden />
+                        <span className="text-xs font-medium">Video</span>
+                      </span>
+                    )}
+
+                    {/* Distintivo del tipo, para no confundir un video con una foto. */}
+                    {item.type !== 'image' && item.preview && (
+                      <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-xs font-bold text-white">
+                        {item.type === 'video' ? '▶' : '♪'}
                       </span>
                     )}
                     <button
@@ -532,7 +580,8 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
               </ul>
             ) : (
               <p className="mb-2 rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-400">
-                Sin fotos todavía. Máximo {MAX_IMAGE_MB} MB por foto y {MAX_VIDEO_MB} MB por video.
+                Sin archivos todavía. Hasta {formatBytes(MAX_BYTES.image)} por foto,{' '}
+                {formatBytes(MAX_BYTES.video)} por video y {formatBytes(MAX_BYTES.audio)} por audio.
               </p>
             )}
 

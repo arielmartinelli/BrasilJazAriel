@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useId, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   X, MapPin, Share2, Compass, Check, ChevronLeft, ChevronRight,
-  Edit3, Trash2, ExternalLink,
+  Edit3, Trash2, ExternalLink, Music,
 } from 'lucide-react';
 import { Memory, STAGES } from '@/lib/types';
 import { StageIcon, ParticipantBadge } from '@/components/ui/Icons';
@@ -139,7 +139,7 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
                 <motion.div
                   key={index}
                   className="h-full w-full"
-                  drag={total > 1 ? 'x' : false}
+                  drag={total > 1 && memory.media[index]?.type !== 'audio' ? 'x' : false}
                   dragConstraints={{ left: 0, right: 0 }}
                   dragElastic={0.18}
                   onDragEnd={(_, info) => {
@@ -151,7 +151,24 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.18 }}
                 >
-                  {memory.media[index]?.type === 'video' ? (
+                  {memory.media[index]?.type === 'audio' ? (
+                    // El audio no tiene imagen: se le da una portada propia para
+                    // que no quede un rectángulo negro con una barrita.
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-5 bg-gradient-to-br from-violet-900 via-slate-900 to-emerald-900 px-6">
+                      <span className="flex h-20 w-20 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm">
+                        <Music className="h-9 w-9" aria-hidden />
+                      </span>
+                      <p className="text-center text-sm font-semibold text-white/90">
+                        {memory.media[index].caption?.trim() || 'Nota de voz'}
+                      </p>
+                      <audio
+                        src={memory.media[index].url}
+                        controls
+                        preload="metadata"
+                        className="w-full max-w-md"
+                      />
+                    </div>
+                  ) : memory.media[index]?.type === 'video' ? (
                     <video
                       src={memory.media[index].url}
                       poster={safeImageSrc(videoPosterUrl(memory.media[index].url, 1200))}
@@ -220,9 +237,11 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
             {total > 2 && (
               <div className="no-scrollbar flex gap-2 overflow-x-auto border-b border-slate-100 bg-slate-50 px-4 py-2.5">
                 {memory.media.map((item, thumbIndex) => {
-                  const src = item.type === 'video'
-                    ? safeImageSrc(videoPosterUrl(item.url, 120))
-                    : safeImageSrc(thumbUrl(item.url, { width: 120, height: 120 }));
+                  const src = item.type === 'audio'
+                    ? ''
+                    : item.type === 'video'
+                      ? safeImageSrc(videoPosterUrl(item.url, 120))
+                      : safeImageSrc(thumbUrl(item.url, { width: 120, height: 120 }));
                   return (
                     <button
                       key={item.id}
@@ -238,7 +257,9 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
                       {src ? (
                         <img src={src} alt="" width={120} height={120} loading="lazy" className="h-full w-full object-cover" />
                       ) : (
-                        <span className="flex h-full w-full items-center justify-center bg-slate-800 text-xs text-white">▶</span>
+                        <span className="flex h-full w-full items-center justify-center bg-violet-200 text-violet-800">
+                          <Music className="h-4 w-4" aria-hidden />
+                        </span>
                       )}
                     </button>
                   );

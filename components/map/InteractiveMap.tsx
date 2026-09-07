@@ -31,6 +31,8 @@ interface InteractiveMapProps {
   /** El tour de la historia no necesita agrupar pines ni ver la ruta. */
   enableClustering?: boolean;
   showRouteByDefault?: boolean;
+  /** Al abrir, centrar el mapa en donde esta la persona. */
+  centerOnUserOnLoad?: boolean;
 }
 
 /** Capas gratuitas, sin API key ni marca de agua. */
@@ -63,6 +65,14 @@ const TILE_LAYERS = [
 
 const DEFAULT_CENTER: [number, number] = [-27.6, -48.5496];
 const DEFAULT_ZOOM = 10;
+const USER_ZOOM = 13;
+
+/**
+ * Una sola vez por carga de pagina. El mapa se desmonta y se vuelve a montar
+ * al cambiar entre Mapa, Historia y Muro; sin esta bandera volveria a pedir el
+ * GPS y a mover la vista cada vez que la persona vuelve al mapa.
+ */
+let alreadyCenteredOnUser = false;
 
 export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>(
   (
@@ -73,6 +83,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
       className = '',
       enableClustering = true,
       showRouteByDefault = false,
+      centerOnUserOnLoad = false,
     },
     ref
   ) => {
@@ -184,6 +195,58 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
 
         map.invalidateSize();
         setIsReady(true);
+
+        void centerOnUser(map, L);
+      }
+
+      /**
+       * Abre el mapa donde esta la persona.
+       *
+       * Se saltea en tres casos, para no pelearse con lo que ya esta pasando:
+       *  - si se entro por un enlace /?memory=id (ese recuerdo manda)
+       *  - si ya se centro una vez en esta carga de pagina
+       *  - si la persona movio el mapa mientras el GPS respondia
+       * Si el permiso esta denegado no se muestra ningun error: simplemente
+       * se queda en Florianopolis, que es el centro por defecto.
+       */
+      async function centerOnUser(map: LeafletType.Map, L: typeof LeafletType) {
+        if (!centerOnUserOnLoad || alreadyCenteredOnUser) return;
+        if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('memory')) {
+          return;
+        }
+
+        alreadyCenteredOnUser = true;
+
+        let personMovedMap = false;
+        const markMoved = () => { personMovedMap = true; };
+        map.on('dragstart', markMoved);
+        map.on('zoomstart', markMoved);
+
+        try {
+          const [lng, lat] = await getAccurateCurrentPosition();
+          if (cancelled || personMovedMap || !mapRef.current) return;
+
+          map.setView([lat, lng], USER_ZOOM, { animate: true });
+
+          userMarkerRef.current = L.marker([lat, lng], {
+            icon: L.divIcon({
+              html: `
+                <div class="relative flex items-center justify-center">
+                  <div class="w-6 h-6 rounded-full bg-sky-500 border-2 border-white shadow-lg"></div>
+                  <div class="absolute -inset-1 rounded-full bg-sky-400 opacity-30 animate-ping"></div>
+                </div>`,
+              className: 'user-loc-pin',
+              iconSize: [24, 24],
+              iconAnchor: [12, 12],
+            }),
+            title: 'Estas aca',
+          }).addTo(map);
+        } catch {
+          /* permiso denegado, sin senial o navegador sin GPS: se queda en Floripa */
+        } finally {
+          map.off('dragstart', markMoved);
+          map.off('zoomstart', markMoved);
+        }
       }
 
       init();
@@ -201,7 +264,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
         routeLayerRef.current = null;
         userMarkerRef.current = null;
       };
-    }, [enableClustering]);
+    }, [enableClustering, centerOnUserOnLoad]);
 
     // ------------------------------------------------------------- pines
     useEffect(() => {

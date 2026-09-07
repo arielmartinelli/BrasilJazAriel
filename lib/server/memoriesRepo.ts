@@ -27,8 +27,12 @@ function rowToMemory(row: Row): Memory {
       .map((m) => ({
         id: String(m.id),
         url: String(m.url),
-        type: m.media_type as 'image' | 'video',
+        type: m.media_type as Memory['media'][number]['type'],
         caption: m.caption ? String(m.caption) : undefined,
+        durationSeconds:
+          m.duration_seconds === null || m.duration_seconds === undefined
+            ? undefined
+            : Number(m.duration_seconds),
       })),
   };
 }
@@ -37,7 +41,7 @@ const SELECT = `
   id, title, description, memory_date, latitude, longitude, location_name,
   stage_id, created_by, is_highlight, created_at,
   memory_participants (participant_name),
-  memory_media (id, url, media_type, caption, order_index)
+  memory_media (id, url, media_type, caption, duration_seconds, order_index)
 `;
 
 export async function listMemories(): Promise<Memory[]> {
@@ -71,6 +75,7 @@ async function syncChildren(memoryId: string, input: MemoryInput) {
         media_type: m.type,
         url: m.url,
         caption: m.caption ?? '',
+        duration_seconds: m.durationSeconds ?? null,
         order_index: index,
       }))
     );
@@ -128,4 +133,28 @@ export async function deleteMemoryRow(id: string): Promise<void> {
   if (!supabaseAdmin) throw new Error('Supabase no esta configurado en el servidor');
   const { error } = await supabaseAdmin.from('memories').delete().eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Firma corta del estado de la base, para saber si algo cambio sin bajar
+ * todos los recuerdos. La consulta pide solo el conteo y la fecha de la
+ * ultima edicion: es barata y no crece con el tamanio del album.
+ *
+ * - un alta o una baja cambian el conteo
+ * - una edicion (incluida agregar o sacar fotos) toca memories.updated_at
+ *   por el trigger trg_memories_updated_at
+ */
+export async function getMemoriesVersion(): Promise<string> {
+  if (!supabaseAdmin) return 'local';
+
+  const { data, error, count } = await supabaseAdmin
+    .from('memories')
+    .select('updated_at', { count: 'exact' })
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  if (error) throw new Error(error.message);
+
+  const latest = data?.[0]?.updated_at ?? 'vacio';
+  return `${count ?? 0}:${latest}`;
 }

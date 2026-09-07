@@ -108,6 +108,23 @@ export async function fetchAllMemories(): Promise<LoadResult> {
   }
 }
 
+/**
+ * Firma corta del estado del album. El sondeo compara este valor y solo
+ * vuelve a bajar los recuerdos completos cuando cambia.
+ * Devuelve null si no se pudo consultar: quien llama no debe interpretarlo
+ * como "no cambio nada".
+ */
+export async function fetchMemoriesVersion(): Promise<string | null> {
+  try {
+    const response = await fetch('/api/memories/version', { cache: 'no-store' });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return typeof data.version === 'string' ? data.version : null;
+  } catch {
+    return null;
+  }
+}
+
 type MemoryDraft = Omit<Memory, 'id' | 'createdAt'>;
 
 export async function createMemory(draft: MemoryDraft, source: Source): Promise<Memory> {

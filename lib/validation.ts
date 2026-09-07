@@ -36,8 +36,9 @@ export const safeMediaUrl = z
 export const mediaItemSchema = z.object({
   id: z.string().trim().min(1).max(64),
   url: safeMediaUrl,
-  type: z.enum(['image', 'video']),
+  type: z.enum(['image', 'video', 'audio']),
   caption: z.string().trim().max(300).optional(),
+  durationSeconds: z.number().min(0).max(36000).optional(),
 });
 
 export const memoryInputSchema = z.object({

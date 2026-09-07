@@ -80,9 +80,10 @@ CREATE TABLE IF NOT EXISTS public.memory_participants (
 CREATE TABLE IF NOT EXISTS public.memory_media (
   id          UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   memory_id   UUID REFERENCES public.memories(id) ON DELETE CASCADE NOT NULL,
-  media_type  TEXT NOT NULL CHECK (media_type IN ('image', 'video')),
+  media_type  TEXT NOT NULL CHECK (media_type IN ('image', 'video', 'audio')),
   url         TEXT NOT NULL CHECK (url ~ '^https://'),
   caption     TEXT,
+  duration_seconds NUMERIC,
   order_index INT DEFAULT 0,
   created_at  TIMESTAMPTZ DEFAULT timezone('utc', now()) NOT NULL
 );

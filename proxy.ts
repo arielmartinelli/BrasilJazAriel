@@ -24,8 +24,11 @@ const ALLOWED = {
     'wss://*.supabase.co',
     'https://nominatim.openstreetmap.org',
     'https://res.cloudinary.com',
+    // Subida directa del archivo, sin pasar por Vercel (ver /api/upload/signature).
+    'https://api.cloudinary.com',
   ],
   media: ['https://res.cloudinary.com'],
+
 };
 
 export function proxy(request: NextRequest) {

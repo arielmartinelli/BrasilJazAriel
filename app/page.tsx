@@ -8,7 +8,7 @@ import {
 
 import { Memory, StageId } from '@/lib/types';
 import {
-  fetchAllMemories, createMemory, updateMemory, deleteMemory,
+  fetchAllMemories, fetchMemoriesVersion, createMemory, updateMemory, deleteMemory,
   getActiveUser, setActiveUser, fetchSessionState, signOut,
   type Source,
 } from '@/lib/memoryStore';
@@ -30,7 +30,9 @@ import { MemoryFormModal } from '@/components/memories/MemoryFormModal';
 import { StoryTour } from '@/components/story/StoryTour';
 import { TripStats } from '@/components/stats/TripStats';
 
-const POLL_INTERVAL_MS = 30_000;
+// Sondeo de la firma del album. Es una consulta minima (conteo + fecha de la
+// ultima edicion), asi que 5 s se siente instantaneo sin costar casi nada.
+const SYNC_INTERVAL_MS = 5_000;
 
 export default function Home() {
   // ---------------------------------------------------------------- estado
@@ -97,36 +99,55 @@ export default function Home() {
     return () => { alive = false; };
   }, [load]);
 
-  // ------------------------------------------------- sincronización periódica
+  // ------------------------------------------------- sincronización en vivo
   useEffect(() => {
-    // Antes se hacía polling cada 10 s incluso en modo local (leyendo
-    // localStorage sin sentido) y con la pestaña en segundo plano.
+    // En modo local no hay nada que sincronizar: los datos no salen del equipo.
     if (source !== 'supabase' || needsAccessCode) return;
 
-    const tick = async () => {
-      if (document.visibilityState !== 'visible') return;
-      const result = await fetchAllMemories();
-      if (result.unauthorized) {
-        setNeedsAccessCode(true);
-        return;
+    // Se guarda en un ref y no en estado: cambiarlo no debe re-renderizar
+    // ni volver a montar el intervalo.
+    let lastVersion: string | null = null;
+    let inFlight = false;
+
+    const sync = async () => {
+      // Con la pestaña en segundo plano no se consulta nada. Antes el sondeo
+      // corría igual aunque nadie estuviera mirando.
+      if (document.visibilityState !== 'visible' || inFlight) return;
+
+      inFlight = true;
+      try {
+        const version = await fetchMemoriesVersion();
+        // null = no se pudo consultar. No se interpreta como "sin cambios",
+        // pero tampoco se baja el álbum entero por las dudas.
+        if (version === null || version === lastVersion) return;
+
+        const isFirstCheck = lastVersion === null;
+        lastVersion = version;
+        if (isFirstCheck) return; // la carga inicial ya trajo los datos
+
+        const result = await fetchAllMemories();
+        if (result.unauthorized) {
+          setNeedsAccessCode(true);
+          return;
+        }
+        setMemories(result.memories);
+      } finally {
+        inFlight = false;
       }
-      setMemories((previous) => {
-        // Comparar por id + fecha de edición es mucho más barato que
-        // serializar los dos arrays enteros en cada ciclo.
-        const signature = (list: Memory[]) =>
-          list.map((m) => `${m.id}:${m.media.length}:${m.title}`).join('|');
-        return signature(previous) === signature(result.memories) ? previous : result.memories;
-      });
     };
 
-    const onVisible = () => { if (document.visibilityState === 'visible') void tick(); };
+    void sync(); // toma la firma inicial
+    const timer = window.setInterval(sync, SYNC_INTERVAL_MS);
 
-    const timer = window.setInterval(tick, POLL_INTERVAL_MS);
+    // Al volver a la pestaña se comprueba enseguida, sin esperar el intervalo.
+    const onVisible = () => { if (document.visibilityState === 'visible') void sync(); };
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
 
     return () => {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
     };
   }, [source, needsAccessCode]);
 
@@ -171,6 +192,7 @@ export default function Home() {
       return next;
     });
   }, []);
+
 
   const handleSubmitMemory = useCallback(
     async (draft: Omit<Memory, 'id' | 'createdAt'>) => {
@@ -354,6 +376,7 @@ export default function Home() {
                 ref={mapRef}
                 memories={filteredMemories}
                 selectedMemory={selectedMemory}
+                centerOnUserOnLoad
                 onSelectMemory={(memory) => {
                   setSelectedMemory(memory);
                   mapRef.current?.flyToMemory(memory, 13.5);

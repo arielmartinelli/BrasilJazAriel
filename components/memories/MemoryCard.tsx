@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Camera, Film, Dog, Crosshair } from 'lucide-react';
+import { MapPin, Camera, Film, Dog, Crosshair, Music } from 'lucide-react';
 import { Memory, STAGES } from '@/lib/types';
 import { StageIcon } from '@/components/ui/Icons';
 import { formatMemoryDate } from '@/lib/dates';
@@ -20,6 +20,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, onFlyTo
   const stage = STAGES.find((s) => s.id === memory.stageId);
   const photosCount = memory.media.filter((m) => m.type === 'image').length;
   const videosCount = memory.media.filter((m) => m.type === 'video').length;
+  const audiosCount = memory.media.filter((m) => m.type === 'audio').length;
   const hasBruno = memory.participants.includes('Bruno');
 
   const firstImage = memory.media.find((m) => m.type === 'image')?.url;
@@ -94,6 +95,13 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, onFlyTo
                 <Film className="h-3 w-3" />
                 {videosCount}
                 <span className="sr-only-focusable">videos</span>
+              </span>
+            )}
+            {audiosCount > 0 && (
+              <span className="flex items-center gap-1 rounded-md bg-violet-600/85 px-2 py-0.5 text-xs font-semibold text-white backdrop-blur-sm">
+                <Music className="h-3 w-3" />
+                {audiosCount}
+                <span className="sr-only-focusable">audios</span>
               </span>
             )}
           </div>
