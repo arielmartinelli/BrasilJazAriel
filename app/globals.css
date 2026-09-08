@@ -160,27 +160,6 @@
   font-family: var(--font-sans) !important;
 }
 
-/* Mapas oscuros (Modo noche y Satélite).
-   Ya NO se invierten los colores por CSS: ahora son mapas diseñados oscuros
-   de origen. El filtro anterior dejaba el agua gris y los carteles con halos.
-   Acá solo se ajusta el fondo mientras cargan los tiles, para que no destelle
-   en blanco. */
-.map-dark {
-  background-color: #0f1621 !important;
-}
-.map-dark .leaflet-container {
-  background-color: #0f1621 !important;
-}
-
-/* Los controles flotantes sobre un mapa oscuro necesitan más contraste. */
-.map-dark .leaflet-control-attribution {
-  background: rgba(15, 22, 33, 0.8) !important;
-  color: #cbd5e1 !important;
-}
-.map-dark .leaflet-control-attribution a {
-  color: #93c5fd !important;
-}
-
 .leaflet-popup-content-wrapper {
   border-radius: 16px !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12) !important;

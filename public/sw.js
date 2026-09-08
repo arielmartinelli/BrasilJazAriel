@@ -16,7 +16,7 @@
  *    fueran actuales sería peor que fallar.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `nh-shell-${VERSION}`;
 const ASSET_CACHE = `nh-assets-${VERSION}`;
 const MEDIA_CACHE = `nh-media-${VERSION}`;
@@ -27,7 +27,7 @@ const MEDIA_CACHE_MAX = 250;
 const MEDIA_HOSTS = [
   'res.cloudinary.com',
   'tile.openstreetmap.org',
-  'server.arcgisonline.com',
+  'tile.opentopomap.org',
 ];
 
 self.addEventListener('install', (event) => {
