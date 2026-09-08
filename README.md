@@ -7,7 +7,7 @@ Diario visual privado, pensado para el celular, donde Ariel y Jazmín documentan
 ## Qué hace
 
 **🗺️ Mapa interactivo**
-Cada recuerdo es un pin con su foto. Vuelo suave al tocarlo, tres capas (calles, relieve y **modo noche**), agrupamiento automático cuando hay muchos pines juntos, **ruta del viaje en auto** trazada sobre el mapa, botón de GPS y encuadre automático para ver todo.
+Cada recuerdo es un pin con su foto. Vuelo suave al tocarlo, agrupamiento automático cuando hay muchos pines juntos, **ruta del viaje en auto** trazada sobre el mapa, botón de GPS y encuadre automático para ver todo. Cinco capas, todas gratuitas y sin API key: **Satélite** (Esri), **Calles y playas** y **Claro minimalista** (CARTO), **Relieve y trilhas** (Esri) y **Modo noche** (CARTO Dark Matter).
 
 **📖 Historia**
 Recorrido cronológico capítulo por capítulo, con reproducción automática que sobrevuela el mapa como una película de recuerdos. Se navega también con las flechas del teclado y la barra espaciadora.

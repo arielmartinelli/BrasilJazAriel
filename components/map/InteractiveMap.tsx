@@ -35,33 +35,80 @@ interface InteractiveMapProps {
   centerOnUserOnLoad?: boolean;
 }
 
-/** Capas gratuitas, sin API key ni marca de agua. */
+/**
+ * Capas del mapa. Todas gratuitas, sin API key y sin marca de agua.
+ *
+ * `dark: true` no aplica ningun filtro CSS: son mapas disenados oscuros de
+ * origen. La version anterior invertia los colores del OSM claro por CSS, que
+ * dejaba el agua gris y los textos con halos raros.
+ *
+ * `subdomains` reparte los pedidos entre varios servidores de CARTO, que es
+ * como ellos piden que se los consuma. `{r}` pide la version @2x en pantallas
+ * de alta densidad: los carteles se leen mucho mejor en el telefono.
+ */
 const TILE_LAYERS = [
   {
-    id: 'osm',
-    name: 'Calles y playas',
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    id: 'satellite',
+    name: 'Satélite',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap',
-    night: false,
+    attribution: 'Tiles &copy; Esri &mdash; Esri, Maxar, Earthstar Geographics',
+    subdomains: undefined,
+    retina: false,
+    dark: true, // las fotos aereas son oscuras: la ruta va en verde claro
   },
   {
-    id: 'esri',
-    name: 'Topografía y relieve',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    id: 'voyager',
+    name: 'Calles y playas',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    maxZoom: 20,
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    subdomains: 'abcd',
+    retina: true,
+    dark: false,
+  },
+  {
+    id: 'light',
+    name: 'Claro minimalista',
+    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    maxZoom: 20,
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    subdomains: 'abcd',
+    retina: true,
+    dark: false,
+  },
+  {
+    id: 'terrain',
+    name: 'Relieve y trilhas',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
     maxZoom: 19,
     attribution: 'Tiles &copy; Esri',
-    night: false,
+    subdomains: undefined,
+    retina: false,
+    dark: false,
   },
   {
-    id: 'night',
+    id: 'dark',
     name: 'Modo noche',
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap',
-    night: true,
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    maxZoom: 20,
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    subdomains: 'abcd',
+    retina: true,
+    dark: true,
   },
 ] as const;
+
+/** Opciones de Leaflet para una capa, sin repetir la logica en dos lugares. */
+function tileOptions(config: (typeof TILE_LAYERS)[number]) {
+  return {
+    maxZoom: config.maxZoom,
+    attribution: config.attribution,
+    keepBuffer: 2,
+    ...(config.subdomains ? { subdomains: config.subdomains } : {}),
+    ...(config.retina ? { detectRetina: true } : {}),
+  };
+}
 
 const DEFAULT_CENTER: [number, number] = [-27.6, -48.5496];
 const DEFAULT_ZOOM = 10;
@@ -105,7 +152,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
     const [isLocating, setIsLocating] = useState(false);
     const [showRoute, setShowRoute] = useState(showRouteByDefault);
 
-    const isNight = TILE_LAYERS[tileIndex].night;
+    const isDarkBasemap = TILE_LAYERS[tileIndex].dark;
 
     useImperativeHandle(ref, () => ({
       flyToMemory: (memory, customZoom = 13.5) => {
@@ -157,12 +204,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
         map.attributionControl.setPrefix('');
 
         const config = TILE_LAYERS[0];
-        tileLayerRef.current = L.tileLayer(config.url, {
-          maxZoom: config.maxZoom,
-          attribution: config.attribution,
-          // Sirve tiles de menor resolución mientras cargan los definitivos.
-          keepBuffer: 2,
-        }).addTo(map);
+        tileLayerRef.current = L.tileLayer(config.url, tileOptions(config)).addTo(map);
 
         markersLayerRef.current = enableClustering
           ? (L as unknown as {
@@ -348,14 +390,14 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
       if (points.length < 2) return;
 
       routeLayerRef.current = L.polyline(points, {
-        color: isNight ? '#34d399' : '#047857',
+        color: isDarkBasemap ? '#5eead4' : '#047857',
         weight: 3.5,
         opacity: 0.85,
         dashArray: '10 8',
         className: 'trip-route-line',
         lineJoin: 'round',
       }).addTo(map);
-    }, [memories, showRoute, isNight, isReady]);
+    }, [memories, showRoute, isDarkBasemap, isReady]);
 
     // ------------------------------------------------------------- capas
     const changeTileLayer = useCallback((index: number) => {
@@ -365,11 +407,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
 
       tileLayerRef.current?.remove();
       const config = TILE_LAYERS[index];
-      tileLayerRef.current = L.tileLayer(config.url, {
-        maxZoom: config.maxZoom,
-        attribution: config.attribution,
-        keepBuffer: 2,
-      }).addTo(map);
+      tileLayerRef.current = L.tileLayer(config.url, tileOptions(config)).addTo(map);
 
       setTileIndex(index);
       setIsLayerMenuOpen(false);
@@ -419,7 +457,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
 
     return (
       <div
-        className={`relative w-full h-full bg-slate-100 overflow-hidden ${isNight ? 'map-night' : ''} ${className}`}
+        className={`relative h-full w-full overflow-hidden ${isDarkBasemap ? 'map-dark' : 'bg-slate-100'} ${className}`}
       >
         <div
           ref={containerRef}
