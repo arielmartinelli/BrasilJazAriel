@@ -137,66 +137,92 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
       async function init() {
         if (!containerRef.current || mapRef.current) return;
 
-        const L = (await import('leaflet')).default;
-        if (enableClustering) await import('leaflet.markercluster');
-        if (cancelled || !containerRef.current) return;
+        try {
+          const L = (await import('leaflet')).default;
+          if (typeof window !== 'undefined') {
+            (window as unknown as { L: typeof LeafletType }).L = L;
+            (globalThis as unknown as { L: typeof LeafletType }).L = L;
+          }
 
-        LRef.current = L;
+          if (enableClustering) {
+            try {
+              await import('leaflet.markercluster');
+            } catch (clusterErr) {
+              console.warn('No se pudo cargar leaflet.markercluster, usando capa estándar:', clusterErr);
+            }
+          }
 
-        const map = L.map(containerRef.current, {
-          center: DEFAULT_CENTER,
-          zoom: DEFAULT_ZOOM,
-          zoomControl: false,
-          attributionControl: true,
-          // Rueda del mouse sin Ctrl hacía zoom accidental al scrollear la
-          // página en desktop; ahora el gesto es explícito.
-          scrollWheelZoom: true,
-          preferCanvas: true,
-        });
+          if (cancelled || !containerRef.current) return;
 
-        map.attributionControl.setPrefix('');
+          LRef.current = L;
 
-        const config = TILE_LAYERS[0];
-        tileLayerRef.current = L.tileLayer(config.url, {
-          maxZoom: config.maxZoom,
-          attribution: config.attribution,
-          // Sirve tiles de menor resolución mientras cargan los definitivos.
-          keepBuffer: 2,
-        }).addTo(map);
+          const map = L.map(containerRef.current, {
+            center: DEFAULT_CENTER,
+            zoom: DEFAULT_ZOOM,
+            zoomControl: false,
+            attributionControl: true,
+            // Rueda del mouse sin Ctrl hacía zoom accidental al scrollear la
+            // página en desktop; ahora el gesto es explícito.
+            scrollWheelZoom: true,
+            preferCanvas: true,
+          });
 
-        markersLayerRef.current = enableClustering
-          ? (L as unknown as {
-              markerClusterGroup: (options: Record<string, unknown>) => LeafletType.LayerGroup;
-            }).markerClusterGroup({
-              maxClusterRadius: 48,
-              showCoverageOnHover: false,
-              spiderfyOnMaxZoom: true,
-              disableClusteringAtZoom: 15,
-              iconCreateFunction: (cluster: { getChildCount: () => number }) => {
-                const count = cluster.getChildCount();
-                const size = count > 20 ? 52 : count > 8 ? 46 : 40;
-                return L.divIcon({
-                  html: `<div class="memory-cluster ${count > 20 ? 'memory-cluster-lg' : ''}" style="width:${size}px;height:${size}px">${count}</div>`,
-                  className: 'memory-cluster-wrapper',
-                  iconSize: [size, size],
-                });
-              },
-            })
-          : L.layerGroup();
+          map.attributionControl.setPrefix('');
 
-        markersLayerRef.current.addTo(map);
-        mapRef.current = map;
+          const config = TILE_LAYERS[0];
+          tileLayerRef.current = L.tileLayer(config.url, {
+            maxZoom: config.maxZoom,
+            attribution: config.attribution,
+            // Sirve tiles de menor resolución mientras cargan los definitivos.
+            keepBuffer: 2,
+          }).addTo(map);
 
-        // El mapa vive dentro de paneles que cambian de tamaño (expandir mapa,
-        // abrir la lista). Un ResizeObserver es más fiable que los setTimeout
-        // encadenados que había antes.
-        observer = new ResizeObserver(() => map.invalidateSize());
-        observer.observe(containerRef.current);
+          const canCluster =
+            enableClustering &&
+            typeof (L as unknown as { markerClusterGroup?: unknown }).markerClusterGroup === 'function';
 
-        map.invalidateSize();
-        setIsReady(true);
+          markersLayerRef.current = canCluster
+            ? (L as unknown as {
+                markerClusterGroup: (options: Record<string, unknown>) => LeafletType.LayerGroup;
+              }).markerClusterGroup({
+                maxClusterRadius: 48,
+                showCoverageOnHover: false,
+                spiderfyOnMaxZoom: true,
+                disableClusteringAtZoom: 15,
+                iconCreateFunction: (cluster: { getChildCount: () => number }) => {
+                  const count = cluster.getChildCount();
+                  const size = count > 20 ? 52 : count > 8 ? 46 : 40;
+                  return L.divIcon({
+                    html: `<div class="memory-cluster ${count > 20 ? 'memory-cluster-lg' : ''}" style="width:${size}px;height:${size}px">${count}</div>`,
+                    className: 'memory-cluster-wrapper',
+                    iconSize: [size, size],
+                  });
+                },
+              })
+            : L.layerGroup();
 
-        void centerOnUser(map, L);
+          markersLayerRef.current.addTo(map);
+          mapRef.current = map;
+
+          // El mapa vive dentro de paneles que cambian de tamaño (expandir mapa,
+          // abrir la lista). Un ResizeObserver es más fiable que los setTimeout
+          // encadenados que había antes.
+          observer = new ResizeObserver(() => map.invalidateSize());
+          observer.observe(containerRef.current);
+
+          map.invalidateSize();
+          setTimeout(() => {
+            if (!cancelled && mapRef.current) {
+              mapRef.current.invalidateSize();
+            }
+          }, 150);
+
+          setIsReady(true);
+
+          void centerOnUser(map, L);
+        } catch (error) {
+          console.error('Error fatal al iniciar el mapa Leaflet:', error);
+        }
       }
 
       /**
@@ -263,6 +289,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
         markersLayerRef.current = null;
         routeLayerRef.current = null;
         userMarkerRef.current = null;
+        setIsReady(false);
       };
     }, [enableClustering, centerOnUserOnLoad]);
 
