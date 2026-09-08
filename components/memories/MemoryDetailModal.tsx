@@ -120,7 +120,7 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: '100%', opacity: 0 }}
             transition={{ type: 'spring', damping: 30, stiffness: 320 }}
-            className="relative z-10 flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-y-auto rounded-t-3xl border border-slate-200 bg-white shadow-2xl outline-none sm:rounded-3xl"
+            className="relative z-10 flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-x-clip overflow-y-auto rounded-t-3xl border border-slate-200 bg-white shadow-2xl outline-none sm:rounded-3xl"
           >
             <div className="flex w-full justify-center pb-1 pt-3 sm:hidden">
               <span className="h-1.5 w-12 rounded-full bg-slate-200" aria-hidden />

@@ -123,7 +123,7 @@ export const StoryTour: React.FC<StoryTourProps> = ({ memories, onOpenDetail }) 
               {stage && (
                 <span className="flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-700">
                   <StageIcon name={stage.iconName} className="h-3.5 w-3.5 shrink-0 text-emerald-700" />
-                  <span className="truncate">{stage.title}</span>
+                  <span className="min-w-0 truncate">{stage.title}</span>
                 </span>
               )}
             </div>
@@ -157,7 +157,7 @@ export const StoryTour: React.FC<StoryTourProps> = ({ memories, onOpenDetail }) 
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col justify-start overflow-y-auto p-4 sm:p-6">
+        <div className="flex flex-1 flex-col justify-start overflow-x-clip overflow-y-auto p-4 sm:p-6">
           <AnimatePresence mode="wait">
             <motion.article
               key={current.id}
@@ -192,7 +192,7 @@ export const StoryTour: React.FC<StoryTourProps> = ({ memories, onOpenDetail }) 
                 <span aria-hidden>•</span>
                 <span className="flex min-w-0 items-center gap-1 font-semibold text-emerald-700">
                   <MapPin className="h-3 w-3 shrink-0" aria-hidden />
-                  <span className="truncate">{current.locationName}</span>
+                  <span className="min-w-0 truncate">{current.locationName}</span>
                 </span>
               </div>
 

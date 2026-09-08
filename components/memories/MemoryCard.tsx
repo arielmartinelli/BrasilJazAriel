@@ -70,7 +70,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, onFlyTo
             {stage && (
               <span className="flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm backdrop-blur-sm">
                 <StageIcon name={stage.iconName} className="h-3 w-3 text-emerald-700" />
-                <span className="max-w-[120px] truncate">{stage.title}</span>
+                <span className="min-w-0 max-w-[120px] truncate">{stage.title}</span>
               </span>
             )}
 
@@ -135,7 +135,7 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, onFlyTo
       <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
         <span className="flex min-w-0 items-center gap-1 text-xs font-medium text-emerald-800">
           <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden />
-          <span className="truncate">{memory.locationName}</span>
+          <span className="min-w-0 truncate">{memory.locationName}</span>
         </span>
 
         {onFlyTo && (

@@ -45,7 +45,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <ArgBraFlagLogo size={36} />
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
-              <h1 className="truncate text-base font-bold tracking-tight text-slate-900 sm:text-lg">
+              <h1 className="min-w-0 truncate text-base font-bold tracking-tight text-slate-900 sm:text-lg">
                 Nossa História
               </h1>
               {/* El estado ahora lo informa el servidor, no una variable
@@ -66,7 +66,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {isCloud ? 'Nube' : 'Local'}
               </span>
             </div>
-            <p className="truncate text-xs font-medium text-slate-500">
+            <p className="min-w-0 truncate text-xs font-medium text-slate-500">
               {memoriesCount > 0
                 ? `${memoriesCount} ${memoriesCount === 1 ? 'recuerdo guardado' : 'recuerdos guardados'}`
                 : 'Ariel, Jazmín & Bruno en Brasil'}

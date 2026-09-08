@@ -87,7 +87,7 @@ export const IosTabBar: React.FC<IosTabBarProps> = ({
             }`}>
               {activeUser[0]}
             </div>
-            <span className="text-[11px] font-semibold w-full text-center truncate px-0.5">
+            <span className="min-w-0 text-[11px] font-semibold w-full text-center truncate px-0.5">
               {activeUser}
             </span>
           </button>

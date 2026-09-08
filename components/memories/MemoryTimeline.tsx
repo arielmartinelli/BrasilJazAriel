@@ -119,12 +119,12 @@ export const MemoryTimeline: React.FC<MemoryTimelineProps> = ({ memories, onOpen
                         )}
                       </span>
 
-                      <span className="truncate text-base font-bold text-slate-900">{memory.title}</span>
+                      <span className="min-w-0 truncate text-base font-bold text-slate-900">{memory.title}</span>
 
                       <span className="flex items-center gap-2.5 text-xs text-slate-500">
                         <span className="flex min-w-0 items-center gap-1 text-emerald-800">
                           <MapPin className="h-3 w-3 shrink-0" aria-hidden />
-                          <span className="truncate">{memory.locationName}</span>
+                          <span className="min-w-0 truncate">{memory.locationName}</span>
                         </span>
                         {photos > 0 && (
                           <span className="flex shrink-0 items-center gap-1">

@@ -318,7 +318,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
 
           {/* Search suggestions dropdown list if active */}
           {activeTab === 'search' && searchResults.length > 0 && (
-            <div className="mt-2 flex flex-col gap-1 max-h-28 overflow-y-auto bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+            <div className="mt-2 flex flex-col gap-1 max-h-28 overflow-x-clip overflow-y-auto bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
               {searchResults.map((r, idx) => (
                 <button
                   key={idx}
@@ -327,7 +327,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
                     moveToCoords(r.coords, r.name);
                     setSearchResults([]);
                   }}
-                  className="text-left px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 text-xs text-slate-700 truncate transition"
+                  className="min-w-0 text-left px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 text-xs text-slate-700 truncate transition"
                 >
                   📍 {r.name}
                 </button>

@@ -396,7 +396,7 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 overflow-y-auto p-4 sm:p-6">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 overflow-x-clip overflow-y-auto p-4 sm:p-6">
           <div>
             <label htmlFor="memory-title" className="mb-1.5 block text-sm font-semibold text-slate-800">
               Título del momento <span className="text-rose-600">*</span>
@@ -462,14 +462,14 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
                   type="button"
                   onClick={() => setStageId(stage.id)}
                   aria-pressed={stageId === stage.id}
-                  className={`flex items-center gap-2 rounded-xl border p-2.5 text-left transition ${
+                  className={`flex min-w-0 items-center gap-2 rounded-xl border p-2.5 text-left transition ${
                     stageId === stage.id
                       ? 'border-emerald-600 bg-emerald-50 font-bold text-emerald-900 shadow-sm'
                       : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   <StageIcon name={stage.iconName} className="h-4 w-4 shrink-0 text-emerald-700" />
-                  <span className="truncate text-xs">{stage.title}</span>
+                  <span className="min-w-0 truncate text-xs">{stage.title}</span>
                 </button>
               ))}
             </div>
@@ -497,7 +497,7 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
             >
               <span className="flex min-w-0 items-center gap-2 text-sm text-slate-800">
                 <MapPin className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
-                <span className="truncate font-medium">
+                <span className="min-w-0 truncate font-medium">
                   {locationName || 'Tocá para elegir en el mapa o buscar el lugar'}
                 </span>
               </span>
@@ -527,7 +527,7 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
                     }`}
                   >
                     <Check className={`h-4 w-4 shrink-0 ${checked ? 'opacity-100' : 'opacity-0'}`} aria-hidden />
-                    <span className="truncate">{participant === 'Jazmin' ? 'Jazmín' : participant}</span>
+                    <span className="min-w-0 truncate">{participant === 'Jazmin' ? 'Jazmín' : participant}</span>
                   </button>
                 );
               })}
@@ -585,7 +585,7 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
               >
                 <p className="flex items-center gap-2 text-sm text-emerald-900">
                   <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-emerald-600" aria-hidden />
-                  <span className="truncate">{uploadStatus}</span>
+                  <span className="min-w-0 truncate">{uploadStatus}</span>
                   <span className="ml-auto shrink-0 font-bold tabular-nums">{uploadPercent}%</span>
                 </p>
                 {/* Con un video de 200 MB, sin esto la pantalla parece colgada. */}
@@ -675,7 +675,7 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
                 value={mediaUrlInput}
                 onChange={(event) => setMediaUrlInput(event.target.value)}
                 placeholder="O pegar una URL de Cloudinary…"
-                className="flex-1 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-emerald-600"
+                className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-emerald-600"
               />
               <button
                 type="button"

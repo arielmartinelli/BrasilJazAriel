@@ -600,14 +600,14 @@ export default function Home() {
                       )}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="mb-0.5 flex items-center gap-1 truncate text-xs font-bold text-emerald-700">
+                      <span className="min-w-0 mb-0.5 flex items-center gap-1 truncate text-xs font-bold text-emerald-700">
                         <MapPin className="h-3 w-3 shrink-0" aria-hidden />
-                        <span className="truncate">{selectedMemory.locationName}</span>
+                        <span className="min-w-0 truncate">{selectedMemory.locationName}</span>
                       </span>
-                      <span className="block truncate text-sm font-bold text-slate-900">
+                      <span className="min-w-0 block truncate text-sm font-bold text-slate-900">
                         {selectedMemory.title}
                       </span>
-                      <span className="mt-0.5 block truncate text-xs text-slate-500">
+                      <span className="min-w-0 mt-0.5 block truncate text-xs text-slate-500">
                         {selectedMemory.description}
                       </span>
                     </span>
@@ -643,7 +643,7 @@ export default function Home() {
                   {filtersNode}
                 </div>
 
-                <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 pb-28">
+                <div className="flex flex-1 flex-col gap-3 overflow-x-clip overflow-y-auto p-3 pb-28">
                   {filteredMemories.length === 0
                     ? emptyState(true)
                     : filteredMemories.map((memory, index) => (
@@ -685,7 +685,7 @@ export default function Home() {
                   {filtersNode}
                 </div>
 
-                <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto p-4">
+                <div className="flex flex-1 flex-col gap-3.5 overflow-x-clip overflow-y-auto p-4">
                   {filteredMemories.length === 0
                     ? emptyState()
                     : filteredMemories.map((memory, index) => (
@@ -715,7 +715,7 @@ export default function Home() {
 
         {/* ------------------------------------------------------- VISTA MURO */}
         {currentView === 'feed' && (
-          <div className="w-full flex-1 overflow-y-auto pb-28 md:pb-8">
+          <div className="w-full flex-1 overflow-x-clip overflow-y-auto pb-28 md:pb-8">
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6">
               <div className="flex flex-col items-start justify-between gap-4 rounded-3xl bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-800 p-6 text-white shadow-sm sm:flex-row sm:items-center sm:p-8">
                 <div>
