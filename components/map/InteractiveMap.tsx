@@ -53,6 +53,8 @@ const TILE_LAYERS = [
 const DEFAULT_CENTER: [number, number] = [-27.6000, -48.5496];
 const DEFAULT_ZOOM = 10;
 
+let hasAutoLocated = false;
+
 export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>(
   (
     {
@@ -60,6 +62,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
       selectedMemory,
       onSelectMemory,
       className = '',
+      centerOnUserOnLoad = true,
     },
     ref
   ) => {
@@ -141,8 +144,47 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
           setTimeout(() => { if (isMounted && mapRef.current) mapRef.current.invalidateSize(); }, 150);
           setTimeout(() => { if (isMounted && mapRef.current) mapRef.current.invalidateSize(); }, 400);
           setTimeout(() => { if (isMounted && mapRef.current) mapRef.current.invalidateSize(); }, 800);
+
+          if (centerOnUserOnLoad && !hasAutoLocated) {
+            hasAutoLocated = true;
+            void autoLocateUser(map, L);
+          }
         } catch (err) {
           console.error('Error inicializando mapa:', err);
+        }
+      }
+
+      async function autoLocateUser(map: LeafletType.Map, L: typeof LeafletType) {
+        if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('memory')) {
+          return;
+        }
+
+        try {
+          const pos = await getAccurateCurrentPosition();
+          if (!isMounted || !mapRef.current) return;
+
+          map.flyTo([pos[1], pos[0]], 13.5, { duration: 1.5 });
+
+          const iconHtml = `
+            <div class="relative flex items-center justify-center">
+              <div class="w-6 h-6 rounded-full bg-sky-500 border-2 border-white shadow-lg animate-pulse"></div>
+              <div class="absolute -inset-1 rounded-full bg-sky-400 opacity-30 animate-ping"></div>
+            </div>
+          `;
+          const icon = L.divIcon({
+            html: iconHtml,
+            className: 'user-loc-pin',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          });
+
+          if (!userMarkerRef.current) {
+            userMarkerRef.current = L.marker([pos[1], pos[0]], { icon, title: 'Tu ubicación' }).addTo(map);
+          } else {
+            userMarkerRef.current.setLatLng([pos[1], pos[0]]);
+          }
+        } catch {
+          // Si el usuario deniega el permiso o no hay señal GPS, permanece en Florianópolis sin errores
         }
       }
 
@@ -163,7 +205,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
         markersLayerRef.current = null;
         setMapReady(false);
       };
-    }, []);
+    }, [centerOnUserOnLoad]);
 
     // Cambiar capa de mapa
     const changeTileLayer = useCallback((idx: number) => {

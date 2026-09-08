@@ -521,6 +521,7 @@ export default function Home() {
                 ref={mapRef}
                 memories={filteredMemories}
                 selectedMemory={selectedMemory}
+                centerOnUserOnLoad
                 onSelectMemory={(memory) => {
                   setSelectedMemory(memory);
                   mapRef.current?.flyToMemory(memory, 13.5);
