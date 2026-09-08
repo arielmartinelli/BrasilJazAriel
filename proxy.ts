@@ -15,8 +15,8 @@ const ALLOWED = {
     'https://images.unsplash.com',
     'https://tile.openstreetmap.org',
     'https://*.tile.openstreetmap.org',
-    'https://tile.opentopomap.org',
-    'https://*.tile.opentopomap.org',
+    'https://server.arcgisonline.com',
+    'https://*.basemaps.cartocdn.com',
   ],
   // Supabase (REST + realtime por websocket) y geocoding de OpenStreetMap.
   connect: [

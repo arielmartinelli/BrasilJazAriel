@@ -35,50 +35,33 @@ interface InteractiveMapProps {
   centerOnUserOnLoad?: boolean;
 }
 
-/**
- * Capas del mapa. Dos, ambas gratuitas, sin API key y sin marca de agua.
- *
- * Se descartaron a proposito:
- *  - CARTO (Voyager / Positron / Dark Matter): desde que pasaron a exigir
- *    clave, estampan "API KEY REQUIRED" sobre cada tile. Devuelven HTTP 200
- *    con un PNG valido, asi que un chequeo de estado no lo detecta: hay que
- *    mirar la imagen.
- *  - Esri (World Imagery / World Topo): responden bien por curl pero no
- *    llegaron a dibujarse en el navegador.
- *
- * `subdomains` reparte los pedidos entre los servidores de OpenTopoMap, que es
- * como ellos piden que se los use. Sus servidores son voluntarios y con cupo:
- * para dos personas alcanza de sobra, pero no conviene abrirlo al publico.
- */
+/** Capas gratuitas, sin API key ni marca de agua. */
 const TILE_LAYERS = [
   {
     id: 'osm',
     name: 'Calles y playas',
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors',
-    subdomains: undefined,
+    attribution: '&copy; OpenStreetMap',
+    night: false,
   },
   {
-    id: 'topo',
-    name: 'Relieve y trilhas',
-    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    // OpenTopoMap no genera tiles mas alla del zoom 17.
-    maxZoom: 17,
-    attribution: '&copy; OpenStreetMap contributors, SRTM | &copy; OpenTopoMap (CC-BY-SA)',
-    subdomains: 'abc',
+    id: 'esri',
+    name: 'Topografía y relieve',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri',
+    night: false,
+  },
+  {
+    id: 'night',
+    name: 'Modo noche',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap',
+    night: true,
   },
 ] as const;
-
-/** Opciones de Leaflet para una capa, sin repetir la logica en dos lugares. */
-function tileOptions(config: (typeof TILE_LAYERS)[number]) {
-  return {
-    maxZoom: config.maxZoom,
-    attribution: config.attribution,
-    keepBuffer: 2,
-    ...(config.subdomains ? { subdomains: config.subdomains } : {}),
-  };
-}
 
 const DEFAULT_CENTER: [number, number] = [-27.6, -48.5496];
 const DEFAULT_ZOOM = 10;
@@ -122,6 +105,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
     const [isLocating, setIsLocating] = useState(false);
     const [showRoute, setShowRoute] = useState(showRouteByDefault);
 
+    const isNight = TILE_LAYERS[tileIndex].night;
 
     useImperativeHandle(ref, () => ({
       flyToMemory: (memory, customZoom = 13.5) => {
@@ -173,7 +157,12 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
         map.attributionControl.setPrefix('');
 
         const config = TILE_LAYERS[0];
-        tileLayerRef.current = L.tileLayer(config.url, tileOptions(config)).addTo(map);
+        tileLayerRef.current = L.tileLayer(config.url, {
+          maxZoom: config.maxZoom,
+          attribution: config.attribution,
+          // Sirve tiles de menor resolución mientras cargan los definitivos.
+          keepBuffer: 2,
+        }).addTo(map);
 
         markersLayerRef.current = enableClustering
           ? (L as unknown as {
@@ -359,14 +348,14 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
       if (points.length < 2) return;
 
       routeLayerRef.current = L.polyline(points, {
-        color: '#047857',
+        color: isNight ? '#34d399' : '#047857',
         weight: 3.5,
         opacity: 0.85,
         dashArray: '10 8',
         className: 'trip-route-line',
         lineJoin: 'round',
       }).addTo(map);
-    }, [memories, showRoute, isReady]);
+    }, [memories, showRoute, isNight, isReady]);
 
     // ------------------------------------------------------------- capas
     const changeTileLayer = useCallback((index: number) => {
@@ -376,7 +365,11 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
 
       tileLayerRef.current?.remove();
       const config = TILE_LAYERS[index];
-      tileLayerRef.current = L.tileLayer(config.url, tileOptions(config)).addTo(map);
+      tileLayerRef.current = L.tileLayer(config.url, {
+        maxZoom: config.maxZoom,
+        attribution: config.attribution,
+        keepBuffer: 2,
+      }).addTo(map);
 
       setTileIndex(index);
       setIsLayerMenuOpen(false);
@@ -426,7 +419,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
 
     return (
       <div
-        className={`relative h-full w-full overflow-hidden bg-slate-100 ${className}`}
+        className={`relative w-full h-full bg-slate-100 overflow-hidden ${isNight ? 'map-night' : ''} ${className}`}
       >
         <div
           ref={containerRef}

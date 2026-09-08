@@ -70,14 +70,6 @@
     touch-action: pan-y pinch-zoom;
   }
 
-  /* Ninguna imagen o video puede empujar el ancho de su contenedor. */
-  img,
-  video,
-  canvas,
-  svg {
-    max-width: 100%;
-  }
-
   /* Las palabras larguisimas sin espacios (una URL pegada en una anecdota, el
      nombre completo que devuelve el geocodificador) son la causa mas comun de
      desborde lateral en telefonos. */
@@ -158,6 +150,21 @@
   min-height: 100% !important;
   background-color: #e8ecef !important;
   font-family: var(--font-sans) !important;
+}
+
+/* Modo noche: filtro CSS sobre los tiles claros. Evita depender de un
+   proveedor extra y funciona con cualquier capa. */
+.map-night .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(185deg) brightness(0.92) contrast(0.92) saturate(0.75);
+}
+.map-night {
+  background-color: #10151c !important;
+}
+/* Los pines no se invierten: llevan fotos reales. */
+.map-night .leaflet-marker-pane,
+.map-night .leaflet-popup-pane,
+.map-night .leaflet-overlay-pane {
+  filter: none;
 }
 
 .leaflet-popup-content-wrapper {
