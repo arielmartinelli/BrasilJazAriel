@@ -76,9 +76,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="es"
-      className={`${plusJakartaSans.variable} h-full w-full max-w-full overflow-x-hidden antialiased font-sans`}
+      className={`${plusJakartaSans.variable} h-full w-full antialiased font-sans`}
     >
-      <body className="h-full w-full max-w-full flex flex-col antialiased bg-slate-50 text-slate-900 overflow-x-hidden">
+      <body className="flex h-full w-full flex-col antialiased bg-slate-50 text-slate-900">
         {/* Salto directo al contenido para quien navega con teclado. */}
         <a
           href="#contenido"

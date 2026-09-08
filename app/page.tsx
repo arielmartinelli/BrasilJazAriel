@@ -445,7 +445,7 @@ export default function Home() {
   }
 
   return (
-    <main className="flex h-dvh w-full max-w-full flex-col overflow-x-hidden overflow-y-hidden bg-slate-50 text-slate-900">
+    <main className="flex h-dvh w-full flex-col overflow-hidden bg-slate-50 text-slate-900">
       <Navbar
         currentView={currentView}
         onViewChange={setCurrentView}

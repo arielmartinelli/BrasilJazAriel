@@ -312,9 +312,9 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
               )}
 
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
+                <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-emerald-700">
                   <MapPin className="h-4 w-4 shrink-0" aria-hidden />
-                  {memory.locationName}
+                  <span className="break-words">{memory.locationName}</span>
                 </span>
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${memory.coordinates[1]},${memory.coordinates[0]}`}
@@ -328,7 +328,7 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
               </div>
 
               {memory.description && (
-                <p className="whitespace-pre-line rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm leading-relaxed text-slate-700 sm:text-base">
+                <p className="whitespace-pre-line break-words rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm leading-relaxed text-slate-700 sm:text-base">
                   {memory.description}
                 </p>
               )}

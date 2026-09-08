@@ -178,25 +178,28 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecorded, disabl
         onClick={isRecording ? stop : start}
         disabled={disabled || isStarting}
         aria-pressed={isRecording}
-        className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold transition active:scale-[0.98] disabled:opacity-50 ${
+        className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-bold transition active:scale-[0.98] disabled:opacity-50 ${
           isRecording
             ? 'border-rose-300 bg-rose-50 text-rose-700'
             : 'border-slate-300 bg-slate-50 text-slate-700 hover:border-emerald-500 hover:text-emerald-700'
         }`}
       >
         {isStarting ? (
-          <><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Preparando micrófono…</>
+          <><Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> <span className="truncate">Preparando micrófono…</span></>
         ) : isRecording ? (
           <>
             <span className="relative flex h-3 w-3" aria-hidden>
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
               <span className="relative inline-flex h-3 w-3 rounded-full bg-rose-600" />
             </span>
-            Grabando {formatDuration(seconds)} — tocá para frenar
-            <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
+            <span className="min-w-0 truncate">
+              Grabando {formatDuration(seconds)}
+              <span className="hidden sm:inline"> — tocá para frenar</span>
+            </span>
+            <Square className="h-3.5 w-3.5 shrink-0 fill-current" aria-hidden />
           </>
         ) : (
-          <><Mic className="h-4 w-4" aria-hidden /> Grabar nota de voz</>
+          <><Mic className="h-4 w-4 shrink-0" aria-hidden /> <span className="truncate">Grabar nota de voz</span></>
         )}
       </button>
 

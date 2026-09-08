@@ -518,7 +518,7 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
                     type="button"
                     onClick={() => toggleParticipant(participant)}
                     aria-pressed={checked}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2.5 text-sm font-semibold transition ${
+                    className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition ${
                       checked
                         ? participant === 'Bruno'
                           ? 'border-amber-400 bg-amber-100 text-amber-900'
@@ -526,8 +526,8 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
                         : 'border-slate-200 bg-slate-50 text-slate-500'
                     }`}
                   >
-                    <Check className={`h-4 w-4 ${checked ? 'opacity-100' : 'opacity-0'}`} aria-hidden />
-                    {participant === 'Jazmin' ? 'Jazmín' : participant}
+                    <Check className={`h-4 w-4 shrink-0 ${checked ? 'opacity-100' : 'opacity-0'}`} aria-hidden />
+                    <span className="truncate">{participant === 'Jazmin' ? 'Jazmín' : participant}</span>
                   </button>
                 );
               })}
@@ -690,7 +690,7 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
           {formError && (
             <p role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-800">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-              <span className="whitespace-pre-line">{formError}</span>
+              <span className="whitespace-pre-line break-words">{formError}</span>
             </p>
           )}
 

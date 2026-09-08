@@ -274,7 +274,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
 
           {activeTab === 'search' && (
             <form onSubmit={handleSearchPlaces} className="flex gap-2">
-              <div className="relative flex-1">
+              <div className="relative min-w-0 flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
@@ -296,7 +296,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
 
           {activeTab === 'gmaps' && (
             <div className="flex gap-2">
-              <div className="relative flex-1">
+              <div className="relative min-w-0 flex-1">
                 <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
