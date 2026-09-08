@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Camera, Film, Dog, Crosshair, Music } from 'lucide-react';
+import { MapPin, Camera, Film, Dog, Crosshair, Music, CloudOff } from 'lucide-react';
 import { Memory, STAGES } from '@/lib/types';
 import { StageIcon } from '@/components/ui/Icons';
 import { formatMemoryDate } from '@/lib/dates';
@@ -74,7 +74,14 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick, onFlyTo
               </span>
             )}
 
-            {hasBruno && (
+            {memory.pendingSync && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-400 px-2 py-1 text-xs font-bold text-amber-950 shadow-sm">
+                <CloudOff className="h-3 w-3" />
+                En espera
+              </span>
+            )}
+
+            {hasBruno && !memory.pendingSync && (
               <span className="flex items-center gap-1 rounded-full bg-amber-400 px-2 py-1 text-xs font-bold text-amber-950 shadow-sm">
                 <Dog className="h-3 w-3" />
                 <span>Bruno</span>

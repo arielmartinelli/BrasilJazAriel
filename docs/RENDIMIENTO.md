@@ -47,7 +47,19 @@
 
 ---
 
-## 3. Mantenimiento
+## 3. Sin conexión
+
+La app ahora abre sin datos y deja cargar recuerdos igual.
+
+- **`public/sw.js`** — service worker escrito a mano, sin plugin, para no depender de que una librería siga al día con Next 16 y Turbopack. Red primero para el HTML (siempre ves lo último si hay señal, y abre igual si no), caché primero para los estáticos con hash, las fotos de Cloudinary y los tiles del mapa. **`/api` nunca se cachea**: devolver recuerdos viejos como si fueran actuales sería peor que fallar.
+- **`lib/offline/`** — cola en IndexedDB, no en localStorage: hay que guardar las fotos y videos originales, que no entran en los ~5 MB de localStorage ni sobreviven a ser texto.
+- El orden al sincronizar importa: suben los archivos, después se guarda el recuerdo, y recién con eso confirmado se saca de la cola. Al revés, un corte a mitad de camino perdería el recuerdo.
+- Un candado evita que dos disparos simultáneos (volvió la red + la persona tocó "Subir ahora") suban lo mismo dos veces.
+- Los recuerdos en espera se ven en el mapa y en el muro leyendo las fotos del archivo local, y no se pueden editar ni compartir hasta que existan en la nube.
+
+**Límite conocido:** el service worker solo se registra en producción. En `npm run dev` la cola de subida funciona igual, pero la app no abre sin conexión.
+
+## 4. Mantenimiento
 
 **Antes de cada deploy**
 ```bash
@@ -71,7 +83,7 @@ Las fotos quedan en Cloudinary ocupando cuota. La ruta de subida ya devuelve el 
 
 ---
 
-## 4. Lo que no se midió
+## 5. Lo que no se midió
 
 No hay Lighthouse ni Web Vitals reales en este informe: la máquina donde se trabajó no tiene salida a internet, así que ni Google Fonts ni Cloudinary ni los tiles del mapa se pueden cargar para medir de verdad. Las mejoras de arriba son de las que se razonan mirando el código (peso de imágenes, renders, requests), no de las que se estiman.
 

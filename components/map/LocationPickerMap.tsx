@@ -250,7 +250,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
         {/* Sub-bar for selected tab */}
         <div className="p-2.5 bg-slate-50 border-b border-slate-200">
           {activeTab === 'quick' && (
-            <div className="flex items-center gap-1.5 overflow-x-auto text-xs no-scrollbar">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <button
                 onClick={handleGetCurrentLocation}
                 disabled={isGeolocating}

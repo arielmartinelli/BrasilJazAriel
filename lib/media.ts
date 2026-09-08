@@ -59,9 +59,17 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Solo deja pasar URLs https; corta javascript: y data: en atributos src. */
+/**
+ * Solo deja pasar https y blob:; corta javascript: y data: en atributos src.
+ *
+ * blob: se permite porque son las previsualizaciones de archivos que la persona
+ * acaba de elegir y todavia no se subieron. Las crea nuestro propio codigo con
+ * URL.createObjectURL y son del mismo origen: no pueden llegar desde la base,
+ * donde la validacion solo acepta https de Cloudinary o Unsplash.
+ */
 export function safeImageSrc(url: string | undefined): string {
   if (!url) return '';
+  if (url.startsWith('blob:')) return url;
   try {
     const parsed = new URL(url, 'https://invalid.local');
     return parsed.protocol === 'https:' ? url : '';

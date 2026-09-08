@@ -26,6 +26,8 @@ export interface MediaItem {
   caption?: string;
   /** Solo para audio y video: duracion en segundos. */
   durationSeconds?: number;
+  /** Solo en el navegador: el archivo todavia no se subio. */
+  pending?: boolean;
 }
 
 export interface Memory {
@@ -41,6 +43,8 @@ export interface Memory {
   media: MediaItem[];
   highlight?: boolean;
   createdAt?: string;
+  /** Solo en el navegador: esperando conexion para sincronizarse. */
+  pendingSync?: boolean;
 }
 
 export const STAGES: Stage[] = [

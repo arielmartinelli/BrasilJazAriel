@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus, MapPin, ChevronUp, Palmtree, Maximize2, ListFilter, Layers,
-  LayoutGrid, GitCommitVertical, AlertTriangle,
+  LayoutGrid, GitCommitVertical, AlertTriangle, CloudOff, UploadCloud, Loader2,
 } from 'lucide-react';
 
 import { Memory, StageId } from '@/lib/types';
@@ -14,6 +14,11 @@ import {
 } from '@/lib/memoryStore';
 import { sortChronologically } from '@/lib/stats';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import {
+  enqueueMemory, listPending, removePending, flushQueue, pendingToMemory,
+  type PendingFile, type PendingMemory,
+} from '@/lib/offline/queue';
 import { showErrorAlert } from '@/lib/alerts';
 import { safeImageSrc, thumbUrl } from '@/lib/media';
 
@@ -52,6 +57,11 @@ export default function Home() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [activeUser, setActiveUserState] = useState<'Ariel' | 'Jazmin'>('Ariel');
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+
+  // Recuerdos cargados sin señal, esperando para subirse.
+  const isOnline = useOnlineStatus();
+  const [pending, setPending] = useState<PendingMemory[]>([]);
+  const [syncStatus, setSyncStatus] = useState('');
 
   // Filtros
   const [selectedStage, setSelectedStage] = useState<StageId | 'all'>('all');
@@ -184,6 +194,67 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [linkTargetId, memories]);
 
+  // ------------------------------------------------------------ cola offline
+  const refreshPending = useCallback(async () => {
+    try {
+      setPending(await listPending());
+    } catch {
+      /* IndexedDB no disponible (modo incognito viejo): se sigue sin cola */
+    }
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const list = await listPending();
+        if (alive) setPending(list);
+      } catch {
+        /* IndexedDB no disponible: se sigue sin cola */
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  /** Sube todo lo que quedó esperando y refresca la lista. */
+  const syncPending = useCallback(async () => {
+    if (!navigator.onLine) return;
+
+    const result = await flushQueue(
+      (draft) => createMemory(draft, source),
+      setSyncStatus
+    );
+
+    if (result.unauthorized) {
+      setNeedsAccessCode(true);
+      return;
+    }
+
+    await refreshPending();
+
+    if (result.uploaded > 0) {
+      const fresh = await fetchAllMemories();
+      if (!fresh.unauthorized) setMemories(fresh.memories);
+    }
+    if (result.failed > 0) {
+      showErrorAlert(
+        'Quedaron recuerdos sin subir',
+        'Los guardamos igual en el teléfono. Se vuelven a intentar solos la próxima vez que haya señal.'
+      );
+    }
+  }, [source, refreshPending]);
+
+  // Al volver la conexión, se vacía la cola sola.
+  useEffect(() => {
+    if (!isOnline || pending.length === 0) return;
+    let alive = true;
+    (async () => {
+      await syncPending();
+      if (!alive) return;
+    })();
+    return () => { alive = false; };
+  }, [isOnline, pending.length, syncPending]);
+
   // --------------------------------------------------------------- acciones
   const handleToggleUser = useCallback(() => {
     setActiveUserState((current) => {
@@ -195,12 +266,24 @@ export default function Home() {
 
 
   const handleSubmitMemory = useCallback(
-    async (draft: Omit<Memory, 'id' | 'createdAt'>) => {
+    async (draft: Omit<Memory, 'id' | 'createdAt'>, pendingFiles: PendingFile[]) => {
       if (editingMemory) {
+        // Editar sí necesita conexión: hay que tocar un recuerdo que ya existe
+        // en la nube, y encolar eso abriría la puerta a pisar cambios del otro.
+        if (!navigator.onLine) {
+          throw new Error('Para editar un recuerdo necesitás conexión. Probá de nuevo cuando vuelva la señal.');
+        }
         const updated = await updateMemory({ ...editingMemory, ...draft }, source);
         setMemories((current) => current.map((m) => (m.id === updated.id ? updated : m)));
         setSelectedMemory((current) => (current?.id === updated.id ? updated : current));
         setDetailMemory((current) => (current?.id === updated.id ? updated : current));
+        return;
+      }
+
+      // Sin señal, o con archivos que no llegaron a subir: va entero a la cola.
+      if (!navigator.onLine || pendingFiles.length > 0) {
+        await enqueueMemory(draft, pendingFiles);
+        await refreshPending();
         return;
       }
 
@@ -209,14 +292,24 @@ export default function Home() {
       setSelectedMemory(created);
       window.setTimeout(() => mapRef.current?.flyToMemory(created, 13.5), 120);
     },
-    [editingMemory, source]
+    [editingMemory, source, refreshPending]
   );
 
   const handleDelete = useCallback(
     async (id: string) => {
+      // Un recuerdo en espera todavia no existe en la nube: borrarlo es
+      // sacarlo de la cola, no pedirle al servidor que borre un id inexistente.
+      if (pending.some((entry) => entry.id === id)) {
+        await removePending(id);
+        setPending(await listPending());
+        setSelectedMemory((current) => (current?.id === id ? null : current));
+        setDetailMemory((current) => (current?.id === id ? null : current));
+        return;
+      }
+
       const backup = memories;
       // Actualización optimista: la UI responde al instante y, si el servidor
-      // falla, se revierte y se avisa (antes se borraba local aunque fallara).
+      // falla, se revierte y se avisa.
       setMemories((current) => current.filter((m) => m.id !== id));
       setSelectedMemory((current) => (current?.id === id ? null : current));
       setDetailMemory((current) => (current?.id === id ? null : current));
@@ -231,7 +324,7 @@ export default function Home() {
         );
       }
     },
-    [memories, source]
+    [memories, pending, source]
   );
 
   const handleFlyTo = useCallback((memory: Memory) => {
@@ -259,18 +352,27 @@ export default function Home() {
   }, []);
 
   // ---------------------------------------------------------------- filtrado
+  // Los pendientes se muestran junto al resto, con sus fotos leidas del
+  // archivo local, para que el recuerdo se vea completo aunque no haya señal.
+  const pendingMemories = useMemo(() => pending.map(pendingToMemory), [pending]);
+
+  const allMemories = useMemo(
+    () => [...pendingMemories, ...memories],
+    [pendingMemories, memories]
+  );
+
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const memory of memories) {
+    for (const memory of allMemories) {
       counts[memory.stageId] = (counts[memory.stageId] ?? 0) + 1;
     }
     return counts;
-  }, [memories]);
+  }, [allMemories]);
 
   const filteredMemories = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
-    const result = memories.filter((memory) => {
+    const result = allMemories.filter((memory) => {
       if (selectedStage !== 'all' && memory.stageId !== selectedStage) return false;
       if (onlyBruno && !memory.participants.includes('Bruno')) return false;
 
@@ -292,7 +394,7 @@ export default function Home() {
 
     const chronological = sortChronologically(result);
     return sortOrder === 'oldest' ? chronological : chronological.reverse();
-  }, [memories, selectedStage, selectedParticipant, onlyBruno, searchQuery, sortOrder]);
+  }, [allMemories, selectedStage, selectedParticipant, onlyBruno, searchQuery, sortOrder]);
 
   const filtersNode = (
     <MemoryFilters
@@ -306,7 +408,7 @@ export default function Home() {
       onToggleBruno={() => setOnlyBruno((value) => !value)}
       sortOrder={sortOrder}
       onSortChange={setSortOrder}
-      totalCount={memories.length}
+      totalCount={allMemories.length}
       stageCounts={stageCounts}
       onClearFilters={clearFilters}
     />
@@ -343,12 +445,12 @@ export default function Home() {
   }
 
   return (
-    <main className="flex h-dvh w-full flex-col overflow-hidden bg-slate-50 text-slate-900">
+    <main className="flex h-dvh w-full max-w-full flex-col overflow-x-hidden overflow-y-hidden bg-slate-50 text-slate-900">
       <Navbar
         currentView={currentView}
         onViewChange={setCurrentView}
         onOpenCreate={handleOpenCreate}
-        memoriesCount={memories.length}
+        memoriesCount={allMemories.length}
         activeUser={activeUser}
         onToggleUser={handleToggleUser}
         source={source}
@@ -361,6 +463,49 @@ export default function Home() {
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
           Modo local: los recuerdos se guardan solo en este dispositivo y no se sincronizan.
         </p>
+      )}
+
+      {/* Estado de la conexión y de la cola de subida. */}
+      {!isOnline && (
+        <p
+          role="status"
+          className="flex items-center justify-center gap-2 bg-slate-800 px-4 py-2 text-center text-xs font-semibold text-white"
+        >
+          <CloudOff className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          Sin conexión. Podés seguir cargando recuerdos: se suben solos cuando vuelva la señal.
+        </p>
+      )}
+
+      {pending.length > 0 && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-amber-100 px-4 py-2 text-center text-xs font-semibold text-amber-950"
+        >
+          {syncStatus ? (
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+              {syncStatus}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5">
+              <UploadCloud className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {pending.length === 1
+                ? '1 recuerdo esperando para subirse'
+                : `${pending.length} recuerdos esperando para subirse`}
+            </span>
+          )}
+
+          {isOnline && !syncStatus && (
+            <button
+              type="button"
+              onClick={() => void syncPending()}
+              className="rounded-full bg-amber-950 px-2.5 py-1 text-xs font-bold text-amber-50 transition hover:bg-amber-900"
+            >
+              Subir ahora
+            </button>
+          )}
+        </div>
       )}
 
       <div id="contenido" className="flex min-h-0 flex-1 flex-col">
@@ -596,7 +741,7 @@ export default function Home() {
               </div>
 
               {/* Panel de estadísticas del viaje */}
-              <TripStats memories={memories} />
+              <TripStats memories={allMemories} />
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">{filtersNode}</div>
 
@@ -606,19 +751,19 @@ export default function Home() {
                     <Palmtree className="h-8 w-8" aria-hidden />
                   </span>
                   <h3 className="mb-1.5 text-lg font-bold text-slate-900">
-                    {memories.length === 0 ? 'Tu álbum familiar está listo' : 'Nada con estos filtros'}
+                    {allMemories.length === 0 ? 'Tu álbum familiar está listo' : 'Nada con estos filtros'}
                   </h3>
                   <p className="mb-6 max-w-sm text-sm leading-relaxed text-slate-500">
-                    {memories.length === 0
+                    {allMemories.length === 0
                       ? 'Todavía no hay recuerdos guardados. Registrá el primer momento del viaje en auto para empezar a llenar el mapa y la historia.'
                       : 'Probá quitando algún filtro para ver más momentos.'}
                   </p>
                   <button
                     type="button"
-                    onClick={memories.length === 0 ? handleOpenCreate : clearFilters}
+                    onClick={allMemories.length === 0 ? handleOpenCreate : clearFilters}
                     className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
                   >
-                    {memories.length === 0 ? (
+                    {allMemories.length === 0 ? (
                       <><Plus className="h-4 w-4 stroke-[2.5]" aria-hidden /> Registrar primer recuerdo</>
                     ) : (
                       'Limpiar filtros'

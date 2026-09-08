@@ -21,6 +21,9 @@ Grilla de tarjetas o **línea de tiempo** agrupada por mes. Filtros por etapa, p
 **📊 Resumen del viaje**
 Días de aventura, kilómetros entre paradas, lugares visitados, fotos, videos y momentos con Bruno.
 
+**📴 Funciona sin señal**
+La app abre aunque no haya datos, y podés cargar un recuerdo completo —con fotos, videos y audios— desde una playa sin cobertura. Todo queda guardado en el teléfono y se sube solo cuando vuelve la conexión. Los recuerdos en espera se ven en el mapa y en el muro con el cartel "En espera".
+
 **🔗 Compartir**
 Cada recuerdo tiene su enlace propio: quien lo abre entra directo a ese momento.
 
@@ -100,7 +103,9 @@ lib/
   media.ts    miniaturas de Cloudinary y escapado de HTML
   validation.ts  esquemas Zod compartidos
   stats.ts  dates.ts  geoUtils.ts  alerts.ts  types.ts  memoryStore.ts
-hooks/        accesibilidad de modales · debounce
+lib/offline/  cola de subida en IndexedDB para cuando no hay señal
+public/sw.js  service worker: la app abre sin conexión
+hooks/        accesibilidad de modales · debounce · estado de conexión
 proxy.ts      Content Security Policy con nonce por request
 docs/         SEGURIDAD.md · RENDIMIENTO.md
 ```

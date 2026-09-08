@@ -47,7 +47,7 @@ export const MemoryFilters: React.FC<MemoryFiltersProps> = ({
     searchQuery.trim().length > 0;
 
   return (
-    <div className="flex w-full flex-col gap-2.5">
+    <div className="flex w-full max-w-full flex-col gap-2.5 overflow-x-hidden">
       {/* Buscador + autor */}
       <div className="flex w-full items-center gap-2">
         <div className="relative flex-1">
@@ -146,7 +146,7 @@ export const MemoryFilters: React.FC<MemoryFiltersProps> = ({
 
       {/* Etapas */}
       <div
-        className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1"
+        className="flex flex-wrap items-center gap-1.5 pb-1"
         role="group"
         aria-label="Filtrar por etapa"
       >
@@ -154,7 +154,7 @@ export const MemoryFilters: React.FC<MemoryFiltersProps> = ({
           type="button"
           onClick={() => onSelectStage('all')}
           aria-pressed={selectedStage === 'all'}
-          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+          className={`shrink-0 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition ${
             selectedStage === 'all'
               ? 'border-emerald-700 bg-emerald-700 text-white shadow-sm'
               : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'
@@ -172,7 +172,7 @@ export const MemoryFilters: React.FC<MemoryFiltersProps> = ({
               type="button"
               onClick={() => onSelectStage(stage.id)}
               aria-pressed={isSelected}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition ${
                 isSelected
                   ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
                   : count === 0

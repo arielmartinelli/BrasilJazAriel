@@ -4,9 +4,9 @@ import React, { useCallback, useId, useMemo, useState } from 'react';
 import confetti from 'canvas-confetti';
 import {
   X, MapPin, Calendar, Camera, UploadCloud, Trash2, Check,
-  Sparkles, Loader2, Navigation, AlertCircle, Music, Film,
+  Sparkles, Loader2, Navigation, AlertCircle, Music, Film, CloudOff,
 } from 'lucide-react';
-import { Memory, Participant, StageId, STAGES, MediaItem } from '@/lib/types';
+import { Memory, Participant, StageId, STAGES, MediaItem, MediaType } from '@/lib/types';
 import { LocationPickerMap } from '@/components/map/LocationPickerMap';
 import { StageIcon } from '@/components/ui/Icons';
 import { getAccurateCurrentPosition, reverseGeocode } from '@/lib/geoUtils';
@@ -16,6 +16,8 @@ import { AudioRecorder } from './AudioRecorder';
 import {
   uploadToCloudinary, kindFromFile, MAX_BYTES, formatBytes, formatDuration,
 } from '@/lib/uploadClient';
+import { PENDING_URL_PREFIX, newLocalId, type PendingFile } from '@/lib/offline/queue';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { safeMediaUrl } from '@/lib/validation';
 import { useModalA11y } from '@/hooks/useModalA11y';
 
@@ -27,7 +29,8 @@ interface MemoryFormModalProps {
   memory: Memory | null;
   activeUser: 'Ariel' | 'Jazmin';
   onClose: () => void;
-  onSubmit: (draft: Draft) => Promise<void>;
+  /** Los archivos que todavia no se subieron viajan aparte, para encolarlos. */
+  onSubmit: (draft: Draft, pendingFiles: PendingFile[]) => Promise<void>;
 }
 
 const FLORIPA: [number, number] = [-48.5496, -27.6];
@@ -48,6 +51,7 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
   isOpen, memory, activeUser, onClose, onSubmit,
 }) => {
   const isEditing = Boolean(memory);
+  const isOnline = useOnlineStatus();
   const titleId = useId();
   const containerRef = useModalA11y(isOpen, onClose);
 
@@ -67,6 +71,11 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadPercent, setUploadPercent] = useState(0);
+  // Archivos elegidos que no se pudieron subir todavia (sin señal o fallo la
+  // subida). Se guardan enteros y viajan a la cola al guardar el recuerdo.
+  const [pendingFiles, setPendingFiles] = useState<
+    Array<PendingFile & { previewUrl: string }>
+  >([]);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -103,6 +112,10 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
     }
     setMediaUrlInput('');
     setFormError(null);
+    setPendingFiles((current) => {
+      current.forEach((f) => URL.revokeObjectURL(f.previewUrl));
+      return [];
+    });
   }
 
   // Al cerrarse, se olvida la clave para que la próxima apertura vuelva a
@@ -137,29 +150,54 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
   }, []);
 
   /**
-   * Sube archivos directo a Cloudinary, sin pasar por Vercel.
+   * Suma archivos al recuerdo.
    *
-   * Antes iban a /api/upload, que corre como Serverless Function: Vercel corta
-   * cualquier request de más de 4.5 MB, así que NINGÚN video llegaba a subirse
-   * (y tampoco las fotos grandes del celular). Ahora el servidor sólo firma el
-   * permiso y el archivo viaja directo al CDN, sin ese techo.
+   * Con señal van directo a Cloudinary (sin pasar por Vercel, que corta en
+   * 4.5 MB y por eso antes no subía ningún video).
+   *
+   * Sin señal —o si la subida falla— el archivo NO se pierde: queda guardado
+   * entero y el recuerdo se encola para subirse solo cuando vuelva la
+   * conexión. Es el caso de cargar algo desde la playa.
    */
-  const uploadFiles = useCallback(async (files: File[]) => {
+  const addFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
 
     setIsUploading(true);
-    const failures: string[] = [];
+    const rejected: string[] = [];
+    let deferred = 0;
+
+    const keepForLater = (file: File, kind: MediaType) => {
+      const fileId = newLocalId('file');
+      const previewUrl = URL.createObjectURL(file);
+      setPendingFiles((current) => [...current, { fileId, file, kind, previewUrl }]);
+      setMediaList((current) => [
+        ...current,
+        {
+          id: `med-${fileId}`,
+          url: `${PENDING_URL_PREFIX}${fileId}`,
+          type: kind,
+          caption: '',
+          pending: true,
+        },
+      ]);
+      deferred += 1;
+    };
 
     for (let i = 0; i < files.length; i += 1) {
       const file = files[i];
       const kind = kindFromFile(file);
 
       if (!kind) {
-        failures.push(`${file.name}: formato no soportado`);
+        rejected.push(`${file.name}: formato no soportado`);
         continue;
       }
       if (file.size > MAX_BYTES[kind]) {
-        failures.push(`${file.name}: pesa ${formatBytes(file.size)}, el máximo es ${formatBytes(MAX_BYTES[kind])}`);
+        rejected.push(`${file.name}: pesa ${formatBytes(file.size)}, el máximo es ${formatBytes(MAX_BYTES[kind])}`);
+        continue;
+      }
+
+      if (!navigator.onLine) {
+        keepForLater(file, kind);
         continue;
       }
 
@@ -179,8 +217,9 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
             durationSeconds: uploaded.durationSeconds,
           },
         ]);
-      } catch (error) {
-        failures.push(`${file.name}: ${error instanceof Error ? error.message : 'falló la subida'}`);
+      } catch {
+        // Se cayó la red a mitad de camino: se guarda para reintentar después.
+        keepForLater(file, kind);
       }
     }
 
@@ -188,10 +227,15 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
     setUploadStatus('');
     setUploadPercent(0);
 
-    if (failures.length > 0) {
+    if (rejected.length > 0) {
       showErrorAlert(
-        failures.length === files.length ? 'No se pudo subir' : 'Algunos archivos fallaron',
-        failures.slice(0, 4).join('\n')
+        rejected.length === files.length ? 'No se pudo agregar' : 'Algunos archivos quedaron afuera',
+        rejected.slice(0, 4).join('\n')
+      );
+    }
+    if (deferred > 0) {
+      setFormError(
+        `${deferred} ${deferred === 1 ? 'archivo quedó guardado' : 'archivos quedaron guardados'} en el teléfono. Se suben solos cuando vuelva la conexión.`
       );
     }
   }, []);
@@ -201,12 +245,25 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
     if (!files?.length) return;
     const list = Array.from(files);
     event.target.value = '';
-    await uploadFiles(list);
-  }, [uploadFiles]);
+    await addFiles(list);
+  }, [addFiles]);
 
   const handleRecorded = useCallback(async (file: File) => {
-    await uploadFiles([file]);
-  }, [uploadFiles]);
+    await addFiles([file]);
+  }, [addFiles]);
+
+  /** Saca un archivo del recuerdo y libera la memoria si era local. */
+  const removeMedia = useCallback((mediaId: string, url: string) => {
+    setMediaList((current) => current.filter((m) => m.id !== mediaId));
+
+    if (!url.startsWith(PENDING_URL_PREFIX)) return;
+    const fileId = url.slice(PENDING_URL_PREFIX.length);
+    setPendingFiles((current) => {
+      const found = current.find((f) => f.fileId === fileId);
+      if (found) URL.revokeObjectURL(found.previewUrl);
+      return current.filter((f) => f.fileId !== fileId);
+    });
+  }, []);
 
   const handleAddMediaUrl = useCallback(() => {
     const value = mediaUrlInput.trim();
@@ -255,7 +312,7 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
         participants,
         media: mediaList,
         highlight: memory?.highlight ?? false,
-      });
+      }, pendingFiles.map(({ fileId, file, kind }) => ({ fileId, file, kind })));
 
       if (!isEditing) {
         try {
@@ -277,7 +334,8 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
     }
   }, [
     isSaving, isUploading, title, locationName, description, date, coordinates,
-    stageId, createdBy, participants, mediaList, memory, isEditing, onSubmit, onClose,
+    stageId, createdBy, participants, mediaList, pendingFiles, memory, isEditing,
+    onSubmit, onClose,
   ]);
 
   const inputClass =
@@ -287,14 +345,18 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
     () =>
       mediaList.map((item) => ({
         ...item,
-        preview:
-          item.type === 'image'
+        preview: item.pending
+          // Todavia no subio: se muestra directo desde el archivo del telefono.
+          ? (item.type === 'image'
+              ? pendingFiles.find((f) => item.url.endsWith(f.fileId))?.previewUrl ?? ''
+              : '')
+          : item.type === 'image'
             ? safeImageSrc(thumbUrl(item.url, { width: 200, height: 200 }))
             : item.type === 'video'
               ? safeImageSrc(videoPosterUrl(item.url, 200))
-              : '', // el audio no tiene imagen: se muestra un ícono
+              : '', // el audio no tiene imagen: se muestra un icono
       })),
-    [mediaList]
+    [mediaList, pendingFiles]
   );
 
   if (!isOpen) return null;
@@ -536,6 +598,16 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
               </div>
             )}
 
+            {!isOnline && (
+              <p className="mb-2 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-sm text-amber-900">
+                <CloudOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>
+                  Sin conexión. Podés cargar el recuerdo igual: queda guardado en el
+                  teléfono y se sube solo cuando vuelva la señal.
+                </span>
+              </p>
+            )}
+
             {/* Grabar una nota de voz sin salir de la app. */}
             <div className="mb-2">
               <AudioRecorder onRecorded={handleRecorded} disabled={isUploading} />
@@ -567,9 +639,19 @@ export const MemoryFormModal: React.FC<MemoryFormModalProps> = ({
                         {item.type === 'video' ? '▶' : '♪'}
                       </span>
                     )}
+
+                    {item.pending && (
+                      <span
+                        title="Se sube cuando vuelva la conexión"
+                        className="pointer-events-none absolute inset-x-1 bottom-1 flex items-center justify-center gap-1 rounded bg-amber-400/95 px-1 py-0.5 text-xs font-bold text-amber-950"
+                      >
+                        <CloudOff className="h-3 w-3" aria-hidden />
+                        En espera
+                      </span>
+                    )}
                     <button
                       type="button"
-                      onClick={() => setMediaList((current) => current.filter((m) => m.id !== item.id))}
+                      onClick={() => removeMedia(item.id, item.url)}
                       className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white transition hover:bg-rose-600"
                     >
                       <Trash2 className="h-3 w-3" aria-hidden />

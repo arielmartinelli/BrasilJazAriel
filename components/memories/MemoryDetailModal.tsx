@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useId, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   X, MapPin, Share2, Compass, Check, ChevronLeft, ChevronRight,
-  Edit3, Trash2, ExternalLink, Music,
+  Edit3, Trash2, ExternalLink, Music, CloudOff,
 } from 'lucide-react';
 import { Memory, STAGES } from '@/lib/types';
 import { StageIcon, ParticipantBadge } from '@/components/ui/Icons';
@@ -86,8 +86,10 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
   const handleDelete = useCallback(async () => {
     if (!memory || !onDelete) return;
     const confirmed = await showConfirmAlert(
-      '¿Eliminar este recuerdo?',
-      `"${memory.title}" se borrará junto con sus fotos y videos. Esta acción no se puede deshacer.`
+      memory.pendingSync ? '¿Descartar este recuerdo?' : '¿Eliminar este recuerdo?',
+      memory.pendingSync
+        ? `"${memory.title}" todavía no se subió. Si lo descartás, se pierden también las fotos que estaban esperando.`
+        : `"${memory.title}" se borrará junto con sus fotos y videos. Esta acción no se puede deshacer.`
     );
     if (!confirmed) return;
     onDelete(memory.id);
@@ -233,9 +235,9 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
               )}
             </div>
 
-            {/* Tira de miniaturas: navegar 20 fotos con puntitos era imposible. */}
+            {/* Tira de miniaturas: ajustada para que no tenga scroll lateral y quede fija */}
             {total > 2 && (
-              <div className="no-scrollbar flex gap-2 overflow-x-auto border-b border-slate-100 bg-slate-50 px-4 py-2.5">
+              <div className="flex flex-wrap gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5 max-w-full overflow-hidden">
                 {memory.media.map((item, thumbIndex) => {
                   const src = item.type === 'audio'
                     ? ''
@@ -248,7 +250,7 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
                       type="button"
                       onClick={() => setIndex(thumbIndex)}
                       aria-current={index === thumbIndex}
-                      className={`h-12 w-12 shrink-0 overflow-hidden rounded-lg border-2 transition ${
+                      className={`h-11 w-11 shrink-0 overflow-hidden rounded-lg border-2 transition ${
                         index === thumbIndex
                           ? 'border-emerald-600 opacity-100'
                           : 'border-transparent opacity-60 hover:opacity-100'
@@ -301,6 +303,14 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
                 {memory.title}
               </h2>
 
+              {memory.pendingSync && (
+                <p className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+                  <CloudOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  Este recuerdo todavía está en tu teléfono. Se sube solo cuando vuelva la
+                  conexión, y recién ahí lo vas a poder editar o compartir.
+                </p>
+              )}
+
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
                   <MapPin className="h-4 w-4 shrink-0" aria-hidden />
@@ -337,7 +347,7 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
 
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4">
                 <div className="flex items-center gap-2">
-                  {onEdit && (
+                  {onEdit && !memory.pendingSync && (
                     <button
                       type="button"
                       onClick={() => { onEdit(memory); onClose(); }}
@@ -354,7 +364,7 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
                       className="flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                      Eliminar
+                      {memory.pendingSync ? 'Descartar' : 'Eliminar'}
                     </button>
                   )}
                 </div>
@@ -362,7 +372,8 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={handleShare}
-                  className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-800 transition hover:bg-slate-200"
+                  disabled={memory.pendingSync}
+                  className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-800 transition hover:bg-slate-200 disabled:opacity-40"
                 >
                   {copied ? (
                     <>
