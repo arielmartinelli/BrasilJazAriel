@@ -48,14 +48,19 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
 
   useEffect(() => {
     let isMounted = true;
+    const containerNode = containerRef.current;
 
     async function initPicker() {
-      if (!containerRef.current || mapRef.current) return;
+      if (!containerNode || mapRef.current) return;
+
+      if ((containerNode as unknown as { _leaflet_id?: number })._leaflet_id) {
+        delete (containerNode as unknown as { _leaflet_id?: number })._leaflet_id;
+      }
 
       const L = (await import('leaflet')).default;
-      if (!isMounted || !containerRef.current) return;
+      if (!isMounted || !containerNode) return;
 
-      const map = L.map(containerRef.current, {
+      const map = L.map(containerNode, {
         center: [coords[1], coords[0]],
         zoom: 13,
         zoomControl: true,
@@ -104,18 +109,34 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
       mapRef.current = map;
       markerRef.current = marker;
 
-      setTimeout(() => {
-        map.invalidateSize();
-      }, 200);
+      map.invalidateSize();
+      setTimeout(() => { if (isMounted && mapRef.current) mapRef.current.invalidateSize(); }, 150);
+      setTimeout(() => { if (isMounted && mapRef.current) mapRef.current.invalidateSize(); }, 400);
     }
 
     initPicker();
 
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && containerNode) {
+      resizeObserver = new ResizeObserver(() => {
+        if (mapRef.current) {
+          mapRef.current.invalidateSize();
+        }
+      });
+      resizeObserver.observe(containerNode);
+    }
+
     return () => {
       isMounted = false;
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
+      }
+      if (containerNode && (containerNode as unknown as { _leaflet_id?: number })._leaflet_id) {
+        delete (containerNode as unknown as { _leaflet_id?: number })._leaflet_id;
       }
     };
     // Se inicializa una sola vez con las coordenadas de entrada; después el

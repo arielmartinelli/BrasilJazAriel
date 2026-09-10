@@ -333,6 +333,11 @@ export default function Home() {
     window.setTimeout(() => mapRef.current?.flyToMemory(memory, 13.5), 160);
   }, []);
 
+  const handleSelectMapMemory = useCallback((memory: Memory) => {
+    setSelectedMemory(memory);
+    mapRef.current?.flyToMemory(memory, 13.5);
+  }, []);
+
   const handleOpenCreate = useCallback(() => {
     setEditingMemory(null);
     setIsFormOpen(true);
@@ -522,10 +527,7 @@ export default function Home() {
                 memories={filteredMemories}
                 selectedMemory={selectedMemory}
                 centerOnUserOnLoad
-                onSelectMemory={(memory) => {
-                  setSelectedMemory(memory);
-                  mapRef.current?.flyToMemory(memory, 13.5);
-                }}
+                onSelectMemory={handleSelectMapMemory}
               />
 
               <div className="absolute bottom-6 left-6 z-20 hidden md:flex">
@@ -864,7 +866,15 @@ export default function Home() {
         onSubmit={handleSubmitMemory}
       />
 
-      {showLoader && <RoadTripLoader durationMs={5000} onComplete={() => setShowLoader(false)} />}
+      {showLoader && (
+        <RoadTripLoader
+          durationMs={5000}
+          onComplete={() => {
+            setShowLoader(false);
+            window.setTimeout(() => mapRef.current?.resize(), 80);
+          }}
+        />
+      )}
     </main>
   );
 }

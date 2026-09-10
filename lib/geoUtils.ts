@@ -113,14 +113,20 @@ export async function searchPlaces(query: string): Promise<Array<{ name: string;
   }
 }
 
-export function getAccurateCurrentPosition(): Promise<[number, number]> {
+export function getAccurateCurrentPosition(options?: {
+  timeoutMs?: number;
+  maximumAgeMs?: number;
+}): Promise<[number, number]> {
+  const timeout = options?.timeoutMs ?? 4000;
+  const maxAge = options?.maximumAgeMs ?? 180000;
+
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || !navigator.geolocation) {
       reject(new Error('Geolocalización no soportada en este navegador'));
       return;
     }
 
-    // Try High Accuracy first (GPS on mobile)
+    // Try High Accuracy with short timeout and allowing cached position
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         resolve([pos.coords.longitude, pos.coords.latitude]);
@@ -134,10 +140,10 @@ export function getAccurateCurrentPosition(): Promise<[number, number]> {
           (err2) => {
             reject(err2);
           },
-          { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+          { enableHighAccuracy: false, timeout: 3500, maximumAge: 300000 }
         );
       },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+      { enableHighAccuracy: true, timeout, maximumAge: maxAge }
     );
   });
 }

@@ -110,6 +110,7 @@ export const StoryTour: React.FC<StoryTourProps> = ({ memories, onOpenDetail }) 
           // En el tour los pines son pocos y guiados: agruparlos confunde.
           enableClustering={false}
           showRouteByDefault
+          centerOnUserOnLoad={false}
         />
       </div>
 

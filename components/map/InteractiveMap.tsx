@@ -36,7 +36,8 @@ const TILE_LAYERS = [
   {
     id: 'osm',
     name: 'Calles & Playas',
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c'],
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors',
   },
@@ -44,16 +45,15 @@ const TILE_LAYERS = [
     id: 'esri',
     name: 'Topografía & Relieve',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    subdomains: [] as string[],
     maxZoom: 19,
     attribution: 'Tiles &copy; Esri',
   },
 ];
 
-// Coordenadas de Florianópolis: [lat, lng]
+// Coordenadas por defecto (Florianópolis): [lat, lng]
 const DEFAULT_CENTER: [number, number] = [-27.6000, -48.5496];
 const DEFAULT_ZOOM = 10;
-
-let hasAutoLocated = false;
 
 export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>(
   (
@@ -72,6 +72,8 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
     const markersLayerRef = useRef<LeafletType.LayerGroup | null>(null);
     const LRef = useRef<typeof LeafletType | null>(null);
     const userMarkerRef = useRef<LeafletType.Marker | null>(null);
+    const hasAutoLocatedRef = useRef(false);
+
     const [selectedTileIdx, setSelectedTileIdx] = useState(0);
     const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
     const [isLocating, setIsLocating] = useState(false);
@@ -79,8 +81,10 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
 
     useImperativeHandle(ref, () => ({
       flyToMemory: (memory: Memory, customZoom = 13.5) => {
-        if (!mapRef.current) return;
-        mapRef.current.flyTo([memory.coordinates[1], memory.coordinates[0]], customZoom, {
+        if (!mapRef.current || !memory?.coordinates) return;
+        const [lng, lat] = memory.coordinates;
+        if (isNaN(lat) || isNaN(lng)) return;
+        mapRef.current.flyTo([lat, lng], customZoom, {
           duration: 1.2,
           easeLinearity: 0.2,
         });
@@ -93,9 +97,11 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
         const map = mapRef.current;
         const L = LRef.current;
         if (!map || !L || memories.length === 0) return;
-        const bounds = L.latLngBounds(
-          memories.map((m) => [m.coordinates[1], m.coordinates[0]] as [number, number])
-        );
+        const validCoords = memories
+          .filter((m) => m?.coordinates && !isNaN(m.coordinates[0]) && !isNaN(m.coordinates[1]))
+          .map((m) => [m.coordinates[1], m.coordinates[0]] as [number, number]);
+        if (validCoords.length === 0) return;
+        const bounds = L.latLngBounds(validCoords);
         map.fitBounds(bounds, { padding: [56, 56], maxZoom: 14 });
       },
       resize: () => {
@@ -108,17 +114,23 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
     // Inicializar mapa de Leaflet
     useEffect(() => {
       let isMounted = true;
+      const containerNode = containerRef.current;
 
       async function initLeaflet() {
-        if (!containerRef.current || mapRef.current) return;
+        if (!containerNode || mapRef.current) return;
+
+        // Limpiar _leaflet_id previo para evitar 'Map container is already initialized'
+        if ((containerNode as unknown as { _leaflet_id?: number })._leaflet_id) {
+          delete (containerNode as unknown as { _leaflet_id?: number })._leaflet_id;
+        }
 
         try {
           const L = (await import('leaflet')).default;
           LRef.current = L;
 
-          if (!isMounted || !containerRef.current) return;
+          if (!isMounted || !containerNode) return;
 
-          const map = L.map(containerRef.current, {
+          const map = L.map(containerNode, {
             center: DEFAULT_CENTER,
             zoom: DEFAULT_ZOOM,
             zoomControl: false,
@@ -128,6 +140,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
           // Capa de mosaicos inicial
           const tileConfig = TILE_LAYERS[0];
           const tileLayer = L.tileLayer(tileConfig.url, {
+            subdomains: tileConfig.subdomains,
             maxZoom: tileConfig.maxZoom,
             attribution: tileConfig.attribution,
           }).addTo(map);
@@ -139,14 +152,14 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
           mapRef.current = map;
           setMapReady(true);
 
-          // Invalidate size en múltiples intervalos para garantizar cobertura total de altura
+          // Invalidate size en intervalos para adaptarse a renders y animaciones
           map.invalidateSize();
-          setTimeout(() => { if (isMounted && mapRef.current) mapRef.current.invalidateSize(); }, 150);
-          setTimeout(() => { if (isMounted && mapRef.current) mapRef.current.invalidateSize(); }, 400);
-          setTimeout(() => { if (isMounted && mapRef.current) mapRef.current.invalidateSize(); }, 800);
+          setTimeout(() => { if (isMounted && mapRef.current) mapRef.current.invalidateSize(); }, 120);
+          setTimeout(() => { if (isMounted && mapRef.current) mapRef.current.invalidateSize(); }, 350);
+          setTimeout(() => { if (isMounted && mapRef.current) mapRef.current.invalidateSize(); }, 700);
 
-          if (centerOnUserOnLoad && !hasAutoLocated) {
-            hasAutoLocated = true;
+          if (centerOnUserOnLoad && !hasAutoLocatedRef.current) {
+            hasAutoLocatedRef.current = true;
             void autoLocateUser(map, L);
           }
         } catch (err) {
@@ -159,11 +172,28 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
           return;
         }
 
+        // 1. Centrado rápido por IP de Vercel (< 100ms, sin diálogo de permisos)
         try {
-          const pos = await getAccurateCurrentPosition();
+          const res = await fetch('/api/locate');
+          if (res.ok && isMounted && mapRef.current) {
+            const data = await res.json();
+            if (data?.coords && Array.isArray(data.coords) && data.source === 'vercel') {
+              const [ipLng, ipLat] = data.coords;
+              if (!isNaN(ipLat) && !isNaN(ipLng)) {
+                map.flyTo([ipLat, ipLng], 12, { duration: 1 });
+              }
+            }
+          }
+        } catch {
+          // Continuar al GPS de dispositivo
+        }
+
+        // 2. Localización GPS de alta precisión con timeout optimizado
+        try {
+          const pos = await getAccurateCurrentPosition({ timeoutMs: 3500, maximumAgeMs: 180000 });
           if (!isMounted || !mapRef.current) return;
 
-          map.flyTo([pos[1], pos[0]], 13.5, { duration: 1.5 });
+          map.flyTo([pos[1], pos[0]], 13.5, { duration: 1.2 });
 
           const iconHtml = `
             <div class="relative flex items-center justify-center">
@@ -179,16 +209,27 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
           });
 
           if (!userMarkerRef.current) {
-            userMarkerRef.current = L.marker([pos[1], pos[0]], { icon, title: 'Tu ubicación' }).addTo(map);
+            userMarkerRef.current = L.marker([pos[1], pos[0]], { icon, title: 'Tu ubicación actual' }).addTo(map);
           } else {
             userMarkerRef.current.setLatLng([pos[1], pos[0]]);
           }
         } catch {
-          // Si el usuario deniega el permiso o no hay señal GPS, permanece en Florianópolis sin errores
+          // Si el usuario deniega el permiso o no hay GPS, se conserva la posición previa sin error
         }
       }
 
       initLeaflet();
+
+      // Observador de cambios de tamaño del contenedor para reajustar Leaflet automáticamente
+      let resizeObserver: ResizeObserver | null = null;
+      if (typeof ResizeObserver !== 'undefined' && containerNode) {
+        resizeObserver = new ResizeObserver(() => {
+          if (mapRef.current) {
+            mapRef.current.invalidateSize();
+          }
+        });
+        resizeObserver.observe(containerNode);
+      }
 
       const handleResize = () => {
         if (mapRef.current) mapRef.current.invalidateSize();
@@ -198,11 +239,18 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
       return () => {
         isMounted = false;
         window.removeEventListener('resize', handleResize);
+        if (resizeObserver) {
+          resizeObserver.disconnect();
+        }
         if (mapRef.current) {
           mapRef.current.remove();
           mapRef.current = null;
         }
+        if (containerNode && (containerNode as unknown as { _leaflet_id?: number })._leaflet_id) {
+          delete (containerNode as unknown as { _leaflet_id?: number })._leaflet_id;
+        }
         markersLayerRef.current = null;
+        userMarkerRef.current = null;
         setMapReady(false);
       };
     }, [centerOnUserOnLoad]);
@@ -216,6 +264,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
       }
       const newConfig = TILE_LAYERS[idx];
       const newLayer = L.tileLayer(newConfig.url, {
+        subdomains: newConfig.subdomains,
         maxZoom: newConfig.maxZoom,
         attribution: newConfig.attribution,
       }).addTo(mapRef.current);
@@ -233,52 +282,68 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
       markersLayer.clearLayers();
 
       memories.forEach((mem) => {
+        if (!mem || !mem.coordinates || !Array.isArray(mem.coordinates) || mem.coordinates.length < 2) {
+          return;
+        }
+
+        const lng = Number(mem.coordinates[0]);
+        const lat = Number(mem.coordinates[1]);
+        if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          return;
+        }
+
         const isSelected = selectedMemory?.id === mem.id;
-        const firstPhoto = mem.media.find((m) => m.type === 'image')?.url;
-        const hasBruno = mem.participants.includes('Bruno');
+        const firstPhoto = Array.isArray(mem.media) ? mem.media.find((m) => m.type === 'image')?.url : undefined;
+        const hasBruno = Array.isArray(mem.participants) && mem.participants.includes('Bruno');
+        const creatorInitial = mem.createdBy && mem.createdBy[0] ? mem.createdBy[0] : 'A';
+        const titleInitial = (mem.title || 'R').slice(0, 1).toUpperCase();
 
-        const iconHtml = `
-          <div class="relative cursor-pointer select-none">
-            ${
-              isSelected
-                ? '<div class="absolute -inset-2 rounded-full bg-emerald-500/30 pin-pulse-active"></div>'
-                : ''
-            }
-            <div class="w-11 h-11 rounded-full p-0.5 bg-white border-2 ${
-              isSelected ? 'border-emerald-600 ring-2 ring-amber-400' : 'border-slate-300'
-            } shadow-lg overflow-hidden transition-transform duration-200 transform ${
-              isSelected ? 'scale-115' : 'hover:scale-110'
-            }">
+        try {
+          const iconHtml = `
+            <div class="relative cursor-pointer select-none">
               ${
-                firstPhoto
-                  ? '<img src="' + firstPhoto + '" alt="" class="w-full h-full object-cover rounded-full" />'
-                  : '<div class="w-full h-full bg-emerald-50 flex items-center justify-center text-emerald-800 font-bold text-xs">' + mem.title.slice(0, 1) + '</div>'
+                isSelected
+                  ? '<div class="absolute -inset-2 rounded-full bg-emerald-500/30 pin-pulse-active"></div>'
+                  : ''
               }
+              <div class="w-11 h-11 rounded-full p-0.5 bg-white border-2 ${
+                isSelected ? 'border-emerald-600 ring-2 ring-amber-400' : 'border-slate-300'
+              } shadow-lg overflow-hidden transition-transform duration-200 transform ${
+                isSelected ? 'scale-115' : 'hover:scale-110'
+              }">
+                ${
+                  firstPhoto
+                    ? '<img src="' + firstPhoto + '" alt="" class="w-full h-full object-cover rounded-full" />'
+                    : '<div class="w-full h-full bg-emerald-50 flex items-center justify-center text-emerald-800 font-bold text-xs">' + titleInitial + '</div>'
+                }
+              </div>
+              <div class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shadow ${
+                hasBruno
+                  ? 'bg-amber-400 text-amber-950 border border-amber-500'
+                  : 'bg-emerald-600 text-white border border-emerald-700'
+              }">
+                ${hasBruno ? 'B' : creatorInitial}
+              </div>
             </div>
-            <div class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shadow ${
-              hasBruno
-                ? 'bg-amber-400 text-amber-950 border border-amber-500'
-                : 'bg-emerald-600 text-white border border-emerald-700'
-            }">
-              ${hasBruno ? 'B' : mem.createdBy[0]}
-            </div>
-          </div>
-        `;
+          `;
 
-        const customIcon = L.divIcon({
-          html: iconHtml,
-          className: 'custom-leaflet-marker',
-          iconSize: [44, 44],
-          iconAnchor: [22, 22],
-        });
+          const customIcon = L.divIcon({
+            html: iconHtml,
+            className: 'custom-leaflet-marker',
+            iconSize: [44, 44],
+            iconAnchor: [22, 22],
+          });
 
-        const marker = L.marker([mem.coordinates[1], mem.coordinates[0]], { icon: customIcon });
+          const marker = L.marker([lat, lng], { icon: customIcon });
 
-        marker.on('click', () => {
-          onSelectMemory(mem);
-        });
+          marker.on('click', () => {
+            onSelectMemory(mem);
+          });
 
-        marker.addTo(markersLayer);
+          marker.addTo(markersLayer);
+        } catch (err) {
+          console.warn('Error al renderizar marcador de recuerdo:', mem, err);
+        }
       });
     }, [memories, selectedMemory, mapReady, onSelectMemory]);
 
@@ -286,24 +351,24 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
       if (isLocating) return;
       setIsLocating(true);
       try {
-        const pos = await getAccurateCurrentPosition();
+        const pos = await getAccurateCurrentPosition({ timeoutMs: 6000, maximumAgeMs: 60000 });
         if (mapRef.current) {
           mapRef.current.flyTo([pos[1], pos[0]], 14, { duration: 1 });
           const L = LRef.current || (await import('leaflet')).default;
+          const iconHtml = `
+            <div class="relative flex items-center justify-center">
+              <div class="w-6 h-6 rounded-full bg-sky-500 border-2 border-white shadow-lg animate-pulse"></div>
+              <div class="absolute -inset-1 rounded-full bg-sky-400 opacity-30 animate-ping"></div>
+            </div>
+          `;
+          const icon = L.divIcon({
+            html: iconHtml,
+            className: 'user-loc-pin',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          });
           if (!userMarkerRef.current) {
-            const iconHtml = `
-              <div class="relative flex items-center justify-center">
-                <div class="w-6 h-6 rounded-full bg-sky-500 border-2 border-white shadow-lg animate-pulse"></div>
-                <div class="absolute -inset-1 rounded-full bg-sky-400 opacity-30 animate-ping"></div>
-              </div>
-            `;
-            const icon = L.divIcon({
-              html: iconHtml,
-              className: 'user-loc-pin',
-              iconSize: [24, 24],
-              iconAnchor: [12, 12],
-            });
-            userMarkerRef.current = L.marker([pos[1], pos[0]], { icon }).addTo(mapRef.current);
+            userMarkerRef.current = L.marker([pos[1], pos[0]], { icon, title: 'Tu ubicación actual' }).addTo(mapRef.current);
           } else {
             userMarkerRef.current.setLatLng([pos[1], pos[0]]);
           }
@@ -323,10 +388,14 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
 
     return (
       <div className={`relative w-full h-full bg-slate-100 overflow-hidden ${className}`}>
-        {/* Leaflet canvas container taking full height and width */}
-        <div ref={containerRef} className="w-full h-full absolute inset-0 z-0" />
+        {/* Contenedor canvas de Leaflet con tamaño completo asegurado */}
+        <div
+          ref={containerRef}
+          className="w-full h-full absolute inset-0 z-0"
+          style={{ minHeight: '100%', minWidth: '100%' }}
+        />
 
-        {/* Floating Map Controls (Top Right) */}
+        {/* Controles flotantes del mapa (arriba a la derecha) */}
         <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
           {/* Selector de capa */}
           <div className="relative">
@@ -378,7 +447,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
             <ZoomOut className="w-4 h-4" />
           </button>
 
-          {/* Recenter on Florianópolis */}
+          {/* Centrar en Florianópolis */}
           <button
             type="button"
             onClick={() => {
@@ -392,7 +461,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
             <Compass className="w-4 h-4" />
           </button>
 
-          {/* Fit all memories */}
+          {/* Ver todos los recuerdos */}
           {memories.length > 1 && (
             <button
               type="button"
@@ -400,9 +469,11 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
                 const map = mapRef.current;
                 const L = LRef.current;
                 if (!map || !L) return;
-                const bounds = L.latLngBounds(
-                  memories.map((m) => [m.coordinates[1], m.coordinates[0]] as [number, number])
-                );
+                const validCoords = memories
+                  .filter((m) => m?.coordinates && !isNaN(m.coordinates[0]) && !isNaN(m.coordinates[1]))
+                  .map((m) => [m.coordinates[1], m.coordinates[0]] as [number, number]);
+                if (validCoords.length === 0) return;
+                const bounds = L.latLngBounds(validCoords);
                 map.fitBounds(bounds, { padding: [56, 56], maxZoom: 14 });
               }}
               title="Ver todos los recuerdos"
@@ -412,7 +483,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
             </button>
           )}
 
-          {/* User GPS Location */}
+          {/* Mi ubicación GPS */}
           <button
             type="button"
             onClick={handleLocate}
@@ -424,7 +495,7 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
           </button>
         </div>
 
-        {/* Minimalist Legend (Desktop) */}
+        {/* Leyenda minimalista (Escritorio) */}
         <div className="absolute bottom-4 left-4 z-10 hidden md:flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-sm text-xs text-slate-600">
           <span className="flex items-center gap-1 font-semibold text-emerald-800">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Floripa
