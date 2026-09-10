@@ -36,8 +36,8 @@ const TILE_LAYERS = [
   {
     id: 'osm',
     name: 'Calles & Playas',
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    subdomains: ['a', 'b', 'c'],
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: [] as string[],
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors',
   },

@@ -26,6 +26,10 @@ const ALLOWED = {
     'https://res.cloudinary.com',
     // Subida directa del archivo, sin pasar por Vercel (ver /api/upload/signature).
     'https://api.cloudinary.com',
+    'https://tile.openstreetmap.org',
+    'https://*.tile.openstreetmap.org',
+    'https://server.arcgisonline.com',
+    'https://*.basemaps.cartocdn.com',
   ],
   media: ['https://res.cloudinary.com'],
 

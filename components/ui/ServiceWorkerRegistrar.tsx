@@ -14,9 +14,14 @@ export function ServiceWorkerRegistrar() {
     if (!('serviceWorker' in navigator)) return;
 
     const register = () => {
-      navigator.serviceWorker.register('/sw.js').catch((error) => {
-        console.warn('No se pudo registrar el service worker:', error);
-      });
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((reg) => {
+          void reg.update();
+        })
+        .catch((error) => {
+          console.warn('No se pudo registrar el service worker:', error);
+        });
     };
 
     // Después del load: registrarlo antes compite por ancho de banda con
