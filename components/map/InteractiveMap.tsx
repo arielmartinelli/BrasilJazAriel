@@ -13,6 +13,7 @@ import { Compass, Layers, ZoomIn, ZoomOut, Navigation, Maximize } from 'lucide-r
 import type * as LeafletType from 'leaflet';
 import { getAccurateCurrentPosition } from '@/lib/geoUtils';
 import { showErrorAlert } from '@/lib/alerts';
+import { escapeHtml, safeImageSrc, thumbUrl, videoPosterUrl } from '@/lib/media';
 
 export interface InteractiveMapRef {
   flyToMemory: (memory: Memory, customZoom?: number) => void;
@@ -54,6 +55,37 @@ const TILE_LAYERS = [
 // Coordenadas por defecto (Florianópolis): [lat, lng]
 const DEFAULT_CENTER: [number, number] = [-27.6000, -48.5496];
 const DEFAULT_ZOOM = 10;
+
+function getMemoryThumbnail(mem: Memory): string {
+  if (!mem || !Array.isArray(mem.media) || mem.media.length === 0) return '';
+
+  // 1. Imagen prioritaria (Cloudinary con recorte cuadrado 96px, o blob local)
+  const imgItem = mem.media.find(
+    (m) => m && m.type === 'image' && typeof m.url === 'string' && !m.url.startsWith('pending:')
+  );
+  if (imgItem && imgItem.url) {
+    if (imgItem.url.startsWith('blob:') || imgItem.url.startsWith('data:')) {
+      return imgItem.url;
+    }
+    const safe = safeImageSrc(imgItem.url);
+    if (safe) {
+      return thumbUrl(safe, { width: 96, height: 96, crop: 'fill' });
+    }
+  }
+
+  // 2. Si no hay imagen pero hay video, obtener miniatura del video
+  const vidItem = mem.media.find(
+    (m) => m && m.type === 'video' && typeof m.url === 'string' && !m.url.startsWith('pending:')
+  );
+  if (vidItem && vidItem.url) {
+    const poster = videoPosterUrl(vidItem.url, 96);
+    if (poster) {
+      return safeImageSrc(poster);
+    }
+  }
+
+  return '';
+}
 
 export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>(
   (
@@ -293,36 +325,52 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
         }
 
         const isSelected = selectedMemory?.id === mem.id;
-        const firstPhoto = Array.isArray(mem.media) ? mem.media.find((m) => m.type === 'image')?.url : undefined;
+        const thumbnailSrc = getMemoryThumbnail(mem);
         const hasBruno = Array.isArray(mem.participants) && mem.participants.includes('Bruno');
-        const creatorInitial = mem.createdBy && mem.createdBy[0] ? mem.createdBy[0] : 'A';
-        const titleInitial = (mem.title || 'R').slice(0, 1).toUpperCase();
+        const creatorInitial = escapeHtml(mem.createdBy && mem.createdBy[0] ? mem.createdBy[0] : 'A');
+        const titleInitial = escapeHtml((mem.title || 'R').slice(0, 1).toUpperCase());
+        const safeTitle = escapeHtml(mem.title || 'Recuerdo');
 
         try {
           const iconHtml = `
-            <div class="relative cursor-pointer select-none">
+            <div class="memory-pin-wrapper relative cursor-pointer select-none" style="width:48px;height:48px;">
               ${
                 isSelected
-                  ? '<div class="absolute -inset-2 rounded-full bg-emerald-500/30 pin-pulse-active"></div>'
+                  ? '<div class="absolute -inset-2.5 rounded-full bg-emerald-500/35 pin-pulse-active pointer-events-none"></div>'
                   : ''
               }
-              <div class="w-11 h-11 rounded-full p-0.5 bg-white border-2 ${
-                isSelected ? 'border-emerald-600 ring-2 ring-amber-400' : 'border-slate-300'
-              } shadow-lg overflow-hidden transition-transform duration-200 transform ${
-                isSelected ? 'scale-115' : 'hover:scale-110'
+              <div class="memory-pin-circle w-12 h-12 rounded-full overflow-hidden border-[2.5px] ${
+                isSelected
+                  ? 'border-emerald-600 ring-2 ring-amber-400 shadow-xl'
+                  : 'border-white shadow-md ring-1 ring-black/15 hover:scale-105'
+              } bg-slate-100 flex items-center justify-center transition-transform duration-200 transform ${
+                isSelected ? 'scale-115' : ''
               }">
                 ${
-                  firstPhoto
-                    ? '<img src="' + firstPhoto + '" alt="" class="w-full h-full object-cover rounded-full" />'
-                    : '<div class="w-full h-full bg-emerald-50 flex items-center justify-center text-emerald-800 font-bold text-xs">' + titleInitial + '</div>'
+                  thumbnailSrc
+                    ? `<img
+                        src="${thumbnailSrc}"
+                        alt="${safeTitle}"
+                        loading="eager"
+                        class="memory-pin-img"
+                        style="width:100%!important;height:100%!important;min-width:100%!important;min-height:100%!important;max-width:100%!important;max-height:100%!important;object-fit:cover!important;object-position:center!important;display:block!important;border-radius:9999px!important;margin:0!important;padding:0!important;"
+                        onerror="this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='flex';"
+                      />`
+                    : ''
                 }
+                <div
+                  style="display:${thumbnailSrc ? 'none' : 'flex'};"
+                  class="w-full h-full bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-black text-sm flex items-center justify-center select-none"
+                >
+                  ${titleInitial}
+                </div>
               </div>
-              <div class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shadow ${
+              <div class="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shadow-md border-2 border-white ${
                 hasBruno
-                  ? 'bg-amber-400 text-amber-950 border border-amber-500'
-                  : 'bg-emerald-600 text-white border border-emerald-700'
+                  ? 'bg-amber-400 text-amber-950'
+                  : 'bg-emerald-600 text-white'
               }">
-                ${hasBruno ? 'B' : creatorInitial}
+                ${hasBruno ? '🐾' : creatorInitial}
               </div>
             </div>
           `;
@@ -330,8 +378,8 @@ export const InteractiveMap = forwardRef<InteractiveMapRef, InteractiveMapProps>
           const customIcon = L.divIcon({
             html: iconHtml,
             className: 'custom-leaflet-marker',
-            iconSize: [44, 44],
-            iconAnchor: [22, 22],
+            iconSize: [48, 48],
+            iconAnchor: [24, 24],
           });
 
           const marker = L.marker([lat, lng], { icon: customIcon });

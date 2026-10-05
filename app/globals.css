@@ -188,6 +188,37 @@
   animation: marker-pulse-ring 2s infinite;
 }
 
+/* Pines de fotos de recuerdos en el mapa: cubren 100% el circulo sin deformarse */
+.custom-leaflet-marker,
+.user-loc-pin {
+  background: transparent !important;
+  border: none !important;
+}
+
+.custom-leaflet-marker .memory-pin-circle {
+  width: 48px !important;
+  height: 48px !important;
+  border-radius: 9999px !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+.custom-leaflet-marker img,
+.custom-leaflet-marker .memory-pin-img {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  border-radius: 9999px !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
 /* Ruta del viaje en auto. */
 @keyframes route-dash {
   to { stroke-dashoffset: -24; }
